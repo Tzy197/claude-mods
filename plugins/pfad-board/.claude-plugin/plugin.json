@@ -1,6 +1,0 @@
-{
-  "name": "pfad-board",
-  "version": "0.1.0",
-  "description": "Seitenleiste, die alle parallelen Chats eines Repos als Pfade zeigt: Stand, nächster Schritt, offene Frage",
-  "types": "./types/index.d.ts"
-}

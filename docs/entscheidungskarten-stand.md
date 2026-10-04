@@ -7,7 +7,7 @@ Diese Datei hält fest, was entschieden ist und was noch gefragt werden muss.
 
 Ein Chat soll zu jeder echten Entscheidung von selbst ein Bild liefern, das immer gleich aufgebaut ist: Frage, echtes Beispiel, Vorher, Nachher, Möglichkeiten, Empfehlung. Der Nutzer soll schneller entscheiden können, ohne jedes Mal um eine Visualisierung zu bitten.
 
-Das ist ein eigener Mod, getrennt vom Ziel-Graphen. Der Graph zeigt, wo das Projekt steht. Die Karte hilft bei einer einzelnen Entscheidung. Berührungspunkt: Eine offene Karte erscheint im Pfad-Board als „wartet auf dich“.
+Das ist ein eigener Mod, getrennt vom Ziel-Graphen. Der Graph zeigt, wo das Projekt steht. Die Karte hilft bei einer einzelnen Entscheidung. Berührungspunkt: Eine offene Karte erscheint im Ziel-Graphen beim Chat als „wartet auf dich“.
 
 ## Entschieden
 

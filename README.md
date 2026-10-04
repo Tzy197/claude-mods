@@ -6,8 +6,7 @@ Eigene Mods für Claude Code (Desktop-App und Terminal). Ein Mod ist ein Plugin 
 
 | Mod | Befehle | Was er tut |
 | --- | --- | --- |
-| `pfad-board` | `/board`, `/pfad`, `/ziel` | Zeigt alle parallelen Chats eines Repos als Pfade: Stand, nächster Schritt, offene Frage. Ein Chat mit eigenem Branch oder Ticket meldet sich selbst an. |
-| `ziel-graph` | `/graph` | Zeichnet Ziele und Schritte hochkant wie einen Git-Graphen. Stand: Schritt 1, nur zeichnen, mit festen Beispieldaten. |
+| `ziel-graph` | `/graph`, `/pfad` | Zeigt die laufenden Chats eines Repos: Stand, nächster Schritt, offene Frage. Ein Chat mit eigenem Branch oder Ticket meldet sich selbst an, jeder andere mit `/pfad <Name>`. Der hochkant laufende Graph der Ziele zeigt bis zum ersten Plan nur erfundene Beispieldaten, auf Knopfdruck. Stand: Schritt 2 von 5. |
 
 ## Auf einem Rechner einrichten
 
@@ -18,12 +17,10 @@ claude plugin marketplace add Tzy197/claude-mods
 ```
 
 ```bash
-claude plugin install pfad-board@claude-mods
-```
-
-```bash
 claude plugin install ziel-graph@claude-mods
 ```
+
+Der Ziel-Graph ersetzt das frühere Pfad-Board. Ist davon noch eine alte Fassung lokal installiert (`~/.claude/skills/pfad-board`), muss sie vorher weg: Sonst beantworten beide Mods `/pfad` und fassen jede Antwort doppelt zusammen.
 
 ## Aktualisieren
 
@@ -35,18 +32,18 @@ Danach die App neu starten: Ein Mod lädt beim Start der App.
 
 ## Was nicht im Repo liegt
 
-Die Daten des Pfad-Boards bleiben auf dem jeweiligen Rechner unter `~/.claude/pfad-board/<repo-name>/`: die Stände der Chats und das Ziel. Zwei Rechner haben damit zwei getrennte Boards.
+Die Chat-Stände des Ziel-Graphen liegen unter `~/.claude/ziel-graph/<schlüssel>/`, eine Datei je Chat. Der Schlüssel kommt aus der Adresse von `origin`, ohne `origin` aus dem Pfad des Ordners. Sie liegen auf dem Rechner, der die Session führt. Zwischen Rechnern wandert nichts.
 
-## Voraussetzungen des Pfad-Boards
+## Voraussetzungen des Ziel-Graphen
 
-- `git` im Pfad, für den Branch-Namen des Chats.
-- `glab` im Pfad und im Repo angemeldet, für Ticket-Titel und das Ziel aus der Karte mit dem Label `wayfinder:map`. Ohne `glab` läuft das Board weiter, nur ohne Ticket-Titel und ohne Ziel aus der Karte.
+- `git` im Pfad, für den Branch-Namen des Chats. Ohne Git-Repo läuft der Mod trotzdem.
+- Für Ticket-Titel `glab` (GitLab) oder `gh` (GitHub), angemeldet. Tickets als Markdown-Dateien unter `.scratch/<vorhaben>/issues/` liest der Mod selbst. Ohne Ticket-System läuft er ohne Ticket-Titel.
 - Die Zusammenfassung nach jeder Antwort macht ein Modell-Aufruf (`claude-sonnet-5-5`).
 
 ## Prüfen
 
 ```bash
-claude plugin validate plugins/pfad-board
+claude plugin validate plugins/ziel-graph
 ```
 
 ```bash
@@ -59,5 +56,4 @@ MIT, siehe `LICENSE`.
 
 ## Noch nicht geprüft
 
-- Ob Mods mit Function Hooks über einen Marketplace genauso laden wie aus einem lokalen Ordner.
 - Ob ein zugeschaltetes Gerät die Seitenleiste einer Session zeichnet, die auf einem anderen Rechner läuft.

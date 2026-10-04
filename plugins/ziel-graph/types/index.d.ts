@@ -1,4 +1,5 @@
-// Vertrag des Mods ziel-graph: der Zustand der Leiste und die Form der Graph-Daten.
+// Vertrag des Mods ziel-graph: der Zustand der Leiste, die laufenden Chats und die
+// Form der Graph-Daten.
 
 export type ZielGraphAnsicht = 'schritte' | 'uebersicht'
 
@@ -6,6 +7,8 @@ export type ZielGraphFarben = 'auto' | 'hell' | 'dunkel'
 
 // Was der Nutzer in der Leiste eingestellt hat. Daraus und aus den Daten wird gezeichnet.
 export type ZielGraphZustand = {
+  // true: unter den Chats steht der Beispiel-Graph mit erfundenen Daten
+  beispiel: boolean
   ansicht: ZielGraphAnsicht
   // 'alle' oder die id einer Bahn
   ziel: string
@@ -16,6 +19,38 @@ export type ZielGraphZustand = {
   // ids der aufgeklappten Bündel
   offen: string[]
   farben: ZielGraphFarben
+}
+
+// Welches Ticket-System ein Repo nutzt. 'keine': der Graph läuft ohne Tickets.
+export type ZielGraphTracker = 'gitlab' | 'github' | 'markdown' | 'keine'
+
+// Ein laufender Chat, so wie er als Datei je Session auf dem Rechner liegt.
+export type ZielGraphChat = {
+  // die id der Session
+  id: string
+  name: string
+  // false: mit /pfad aus abgemeldet, der Chat bleibt draußen
+  aktiv: boolean
+  branch: string
+  stand: string
+  naechster: string
+  // die Frage, auf die der Chat vom Nutzer wartet; '' wenn er auf nichts wartet
+  frage: string
+  // wann der Stand zuletzt geschrieben wurde, in Millisekunden; 0: noch nie
+  zeit: number
+  // Ticketnummer ohne '#', wenn Branch oder erster Auftrag eine nennen
+  ticket?: string
+  // Titel des Tickets aus dem Ticket-System; '' wenn dort keiner zu finden war
+  ticketTitel?: string
+}
+
+// Die Chats eines Repos, wie die Leiste sie zeigt: wer wartet, steht oben.
+export type ZielGraphChats = {
+  // die id der eigenen Session
+  ich: string
+  chats: ZielGraphChat[]
+  // wann die Dateien gelesen wurden, in Millisekunden; 0: noch nie
+  gelesen: number
 }
 
 export type ZielGraphPerson = { id: string; name: string }
@@ -72,6 +107,6 @@ export type ZielGraphDaten = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'ziel-graph': { zustand: ZielGraphZustand }
+    'ziel-graph': { zustand: ZielGraphZustand; chats: ZielGraphChats }
   }
 }
