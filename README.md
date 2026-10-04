@@ -7,6 +7,7 @@ Eigene Mods für Claude Code (Desktop-App und Terminal). Ein Mod ist ein Plugin 
 | Mod | Befehle | Was er tut |
 | --- | --- | --- |
 | `ziel-graph` | `/graph` | Zeigt die laufenden Chats eines Repos: Stand, nächster Schritt, offene Frage. Ein Chat mit eigenem Branch oder Ticket meldet sich selbst an, jeden anderen nimmt ein Knopf in der Leiste auf. Der hochkant laufende Graph der Ziele zeigt bis zum ersten Plan nur erfundene Beispieldaten, auf Knopfdruck. Stand: Schritt 2 von 5. |
+| `orchestrator` | `/orchestrator` | Die große Ansicht, aus der man arbeitet: der Plan des Repos als Prozesskarten, je Strang eine Spalte, mit `GOAL.md` als Anker. Sagt, wenn `GOAL.md` oder das Ziel eines Strangs fehlt. Legt Aufträge ins Eingabefeld; als Versuch lässt sich einem wartenden Chat von dort antworten. Liest die Chats, die der Ziel-Graph schreibt. Stand: 0.1.0, in der App noch nicht angesehen. Mehr in `docs/orchestrator.md`. |
 
 ## Auf einem Rechner einrichten
 
@@ -18,6 +19,10 @@ claude plugin marketplace add Tzy197/claude-mods
 
 ```bash
 claude plugin install ziel-graph@claude-mods
+```
+
+```bash
+claude plugin install orchestrator@claude-mods
 ```
 
 Der Ziel-Graph ersetzt das frühere Pfad-Board. Ist davon noch eine alte Fassung lokal installiert (`~/.claude/skills/pfad-board`), muss sie vorher weg: Sonst fassen beide Mods jede Antwort zusammen.
@@ -32,11 +37,17 @@ claude plugin marketplace update claude-mods
 claude plugin update ziel-graph@claude-mods
 ```
 
+```bash
+claude plugin update orchestrator@claude-mods
+```
+
 Danach die App neu starten: Ein Mod lädt beim Start der App.
 
 ## Was nicht im Repo liegt
 
 Die Chat-Stände des Ziel-Graphen liegen unter `~/.claude/ziel-graph/<schlüssel>/`, eine Datei je Chat. Der Schlüssel kommt aus der Adresse von `origin`, ohne `origin` aus dem Pfad des Ordners. Sie liegen auf dem Rechner, der die Session führt. Zwischen Rechnern wandert nichts.
+
+Der Orchestrator legt seinen Plan und jeden Lauf mit Eingabe und Antwort des Modells unter `~/.claude/orchestrator/<schlüssel>/` ab.
 
 ## Voraussetzungen des Ziel-Graphen
 

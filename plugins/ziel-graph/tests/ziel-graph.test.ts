@@ -2,7 +2,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { FsEntry, On, RenderSurface, UiOpenResult } from 'claude-code'
 
-import type { ZielGraphChat } from '../types'
+import type { ZielGraphChat, ZielGraphDaten, ZielGraphZeile, ZielGraphZustand } from '../types'
 
 import {
   istTicketDatei,
@@ -13,6 +13,8 @@ import {
   trackerAus,
   zaehler,
 } from '../hooks/chats'
+import { BEISPIEL } from '../hooks/daten'
+import { ALLE, sicht, zeichneSvg } from '../hooks/zeichnen'
 
 // Die Pane wird durch den Mod auf einer benannten Surface gezeichnet. Ein Baum,
 // den die Surface nicht zeichnen kann, lässt schon `mount` scheitern.
@@ -821,6 +823,48 @@ test('die Kopfzeile zählt Chats und Wartende', () => {
   expect(zaehler([chat('')])).toBe('1 Chat, keiner wartet auf dich')
   expect(zaehler([chat('Ja?'), chat(''), chat('')])).toBe('3 Chats, 1 wartet auf dich')
   expect(zaehler([chat('Ja?'), chat('Nein?')])).toBe('2 Chats, 2 warten auf dich')
+})
+
+test('„wartet auf“ ist nur zwischen zwei Bahnen eine Linie, auch zu einem Ziel weiter oben', () => {
+  const zustand: ZielGraphZustand = {
+    beispiel: true,
+    ansicht: 'schritte',
+    ziel: ALLE,
+    bahnenAus: [],
+    personenAus: [],
+    offen: [],
+    farben: 'hell',
+  }
+  const linien = (daten: ZielGraphDaten): string[] =>
+    [
+      ...zeichneSvg(daten, sicht(daten, zustand), 'hell').source.matchAll(
+        /<path d="([^"]+)"[^>]*stroke-dasharray="5 4"/g,
+      ),
+    ].map(one => one[1] ?? '')
+  const ohneWarten = ({ wartetAuf: _, ...rest }: ZielGraphZeile): ZielGraphZeile => rest
+  // Nur die genannte Zeile wartet, und zwar auf das genannte Ziel.
+  const nur = (id: string, ziel: string): ZielGraphDaten => ({
+    ...BEISPIEL,
+    schritte: BEISPIEL.schritte.map(one => (one.id === id ? { ...one, wartetAuf: ziel } : ohneWarten(one))),
+  })
+  const zahlen = (weg: string): number[] => (weg.match(/-?\d+(\.\d+)?/g) ?? []).map(Number)
+
+  // Das Beispiel: Die Build-Skripte (Werkzeug) warten auf den Lasttest auf dem Stamm, weiter unten.
+  const [nachUnten] = linien(BEISPIEL)
+
+  expect(linien(BEISPIEL)).toHaveLength(1)
+  expect(zahlen(nachUnten ?? '').at(-1)).toBeGreaterThan(zahlen(nachUnten ?? '')[1] ?? 0)
+
+  // In derselben Bahn sagt es die Reihenfolge: keine Linie, ob das Ziel oben oder unten liegt.
+  expect(linien(nur('kasse-rechnungen', 'warenkorb'))).toHaveLength(0)
+  expect(linien(nur('warenkorb', 'kasse-rechnungen'))).toHaveLength(0)
+
+  // In einer anderen Bahn und weiter oben: eine Linie, die nach oben läuft.
+  const [nachOben] = linien(nur('kasse-rechnungen', 'katalog-texte'))
+
+  expect(linien(nur('kasse-rechnungen', 'katalog-texte'))).toHaveLength(1)
+  expect(nachOben).not.toContain('NaN')
+  expect(zahlen(nachOben ?? '').at(-1)).toBeLessThan(zahlen(nachOben ?? '')[1] ?? 0)
 })
 
 // ---------- Der Beispiel-Graph ----------

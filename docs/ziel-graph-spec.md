@@ -1,6 +1,6 @@
 # Ziel-Graph: Spezifikation
 
-Stand: 2026-10-04. Ergebnis eines Grillings mit 16 Entscheidungen. Gebaut sind die Schritte 1 und 2 von 5; Schritt 2 ist in der echten App noch nicht angesehen.
+Stand: 2026-10-04. Ergebnis eines Grillings mit 16 Entscheidungen. Gebaut sind die Schritte 1 und 2 von 5, beide in der Desktop-App angesehen.
 Diese Datei ist die Quelle für jeden Chat, der weiterbaut. Sie nennt bewusst keine Inhalte eines bestimmten Projekts.
 
 ## Zweck
@@ -40,7 +40,7 @@ Der Ziel-Graph zeigt in der Seitenleiste, wo ein Projekt steht: welches Endziel 
 12. **Bündel.** Eine Zeile ist ein Bündel, nie ein einzelnes Ticket. Die Zeile zeigt den Fortschritt („3 von 8 bereit“), Aufklappen zeigt die Tickets. Falsche Bündel korrigiert eine Festlegung.
 13. **Filter und Kategorien.** Bahnen und Personen lassen sich ausblenden. Ausgeblendetes steht als eine Zeile „Ausgeblendet: …“. Die Kategorien sind die Bahnen der Zielliste. Bereichs-Labels aus dem Tracker sind der stärkste Hinweis für die Zuordnung.
 14. **Zuständigkeit.** Eine Festlegung je Bahn sagt, wer sie macht. Ein einzelnes Bündel darf abweichen. Ist ein Ticket im Tracker einer Person zugewiesen, gewinnt die Zuweisung.
-15. **Wartet auf.** Eine Blockade-Verknüpfung im Tracker gilt zuerst. Fehlt sie, liest das Modell den Grund aus Ticket-Text und Chat-Ständen und markiert ihn als „vermutet“. Ein teilweise blockiertes Bündel zeigt einen halb gefüllten Punkt, den Grund und eine dünne Linie zu dem Schritt, auf den es wartet.
+15. **Wartet auf.** Eine Blockade-Verknüpfung im Tracker gilt zuerst. Fehlt sie, liest das Modell den Grund aus Ticket-Text und Chat-Ständen und markiert ihn als „vermutet“. Ein teilweise blockiertes Bündel zeigt einen halb gefüllten Punkt und den Grund. Worauf ein Bündel wartet, steht als Text in seiner zweiten Zeile („wartet auf: …“). Eine dünne Linie gibt es nur, wenn es auf einen Schritt in einer anderen Bahn wartet (geändert am 2026-10-04): In derselben Bahn sagt es schon die Reihenfolge, und Linien dorthin kreuzten in einem echten Plan die Bahnen.
 16. **Eingabe.** Vorschläge bestätigt der Nutzer in der Leiste mit Ja oder Nein, Festlegungen gibt er dort als Satz ein. Beides gilt sofort im Board und liegt erst lokal. Die Leiste zeigt, wie viele Festlegungen noch nicht im Repo sind. Auf Knopfdruck legt ein Chat einen Merge Request an. Den Merge beauftragt der Nutzer selbst.
 
 ## Bestätigte Annahmen
@@ -65,7 +65,7 @@ Der Ziel-Graph zeigt in der Seitenleiste, wo ein Projekt steht: welches Endziel 
 | Doppelring | Endziel |
 | gepunktete Bahn | muss noch gemacht werden |
 | Pfeil am Ende der Bahn | Dauerläufer, kein Ende |
-| dünne gestrichelte Linie | „wartet auf“ |
+| dünne gestrichelte Linie mit zwei Pfeilspitzen | „wartet auf“ einen Schritt in einer anderen Bahn. Die Spitzen zeigen vom Schritt, der zuerst fertig sein muss, zu dem, der wartet: eine auf dem Bogen, eine vor dem wartenden Bündel (seit 2026-10-05). |
 | Marke „Chat“, mit auffälligem Punkt | ein Chat arbeitet hier; er wartet auf den Nutzer |
 
 ## Bauschritte
@@ -75,7 +75,7 @@ Der Ziel-Graph hat das Pfad-Board abgelöst (Entscheidung vom 2026-10-04). Was d
 | Schritt | Inhalt | Stand |
 | --- | --- | --- |
 | 1 · Nur zeichnen | Graph in der Leiste mit festen Beispieldaten, zwei Ansichten, Aufklappen, Filter, Ziel-Auswahl | gebaut; `validate` und 13 Tests grün; am 2026-10-04 in der Desktop-App angesehen, die Leiste erscheint |
-| 2 · Chats übernehmen | Aus dem Pfad-Board: Selbst-Anmeldung eines Chats, Stand nach jeder Antwort (Stand, nächster Schritt, offene Frage), Hinweis bei neuer Frage. Ohne Plan zeigt der Graph nur die laufenden Chats. | gebaut am 2026-10-04 (Version 0.2.1); `validate`, 38 Tests und die Typprüfung grün; in der echten App noch nicht angesehen. Die Chat-Logik liegt in `plugins/ziel-graph/hooks/chats.ts`. Anders als das Pfad-Board öffnet der Mod die Leiste nicht von selbst; sie kommt mit `/graph`. Aufnehmen und Herausnehmen eines Chats geht per Knopf in der Leiste. |
+| 2 · Chats übernehmen | Aus dem Pfad-Board: Selbst-Anmeldung eines Chats, Stand nach jeder Antwort (Stand, nächster Schritt, offene Frage), Hinweis bei neuer Frage. Ohne Plan zeigt der Graph nur die laufenden Chats. | gebaut am 2026-10-04 (Version 0.2.1); `validate`, 38 Tests und die Typprüfung grün; am 2026-10-04 in der Desktop-App angesehen: Aufnehmen, Herausnehmen und der Stand nach einer Antwort laufen. Die Chat-Logik liegt in `plugins/ziel-graph/hooks/chats.ts`. Anders als das Pfad-Board öffnet der Mod die Leiste nicht von selbst; sie kommt mit `/graph`. Aufnehmen und Herausnehmen eines Chats geht per Knopf in der Leiste. |
 | 3 · Zielliste und Festlegungen | Dateien, unterer Teil der Leiste (Vorschläge, Festlegungen, Eingabe), Sammeln bis zum Merge Request | offen |
 | 4 · Ableiten | Knopf „Neu ableiten“: Bündel, Bahnen, „wartet auf“, Vorschläge | offen |
 | 5 · Lebendig machen | Zustand live aus dem Tracker, eingeklappte Dauerläufer, Merge Request auf Zuruf | offen |
@@ -101,6 +101,8 @@ In Schritt 1 ist die Stelle für Schritt 3 vorbereitet: `const DATEN = BEISPIEL`
 - Ein Mod darf an mehreren Stellen zeichnen: Seitenleiste (`Pane`), Band über dem Eingabefeld (`AbovePrompt`), mitten im Chat (`ToolUse`, `ToolResult`, `CommandOutput`, `AskUserQuestion`).
 - Ein Mod aus `~/.claude/skills/<name>` lädt beim Start der App. Eine Änderung greift erst nach dem Neustart.
 - Der Mods-Ordner einer Session lädt nur, nachdem die Person „Enable hot reloading for this session“ bestätigt hat.
+- Ein Bild lässt sich in Streifen zerlegen: jeder Streifen dasselbe `Svg` mit eigenem Ausschnitt (`viewBox`). Gestapelt stoßen sie in der Desktop-App ohne Spalt aneinander, und neben oder über einem Streifen kann ein echter Knopf sitzen. Zwei Fallen: Ein Ausschnitt schneidet nichts ab. Ist die Leiste schmaler als das Bild und der Streifen hat eine feste Höhe, zeigt die App am Rand, was über und unter dem Ausschnitt liegt; der Titel der nächsten Zeile steht dann doppelt da. Deshalb bekommt ein Streifen keine feste Höhe und wird mit einem `clipPath` auf seinen Ausschnitt beschnitten.
+- Abstände für `position: "absolute"` gelten in ganzen Zeichenzellen (in der Desktop-App rund 7,8 Pixel breit). Ein Knopf über einem Bild braucht deshalb einen eigenen freien Platz und hängt am besten am Rand seines Bildes (`right`), nicht an einer gerechneten Stelle von links.
 - Die Hooks laufen auf dem Rechner, der die Session führt. Ein zugeschaltetes Gerät fragt den gezeichneten Baum nur ab und zeichnet ihn dort, wo es einen Platz dafür hat.
 - `$.session.repo()` liefert neben dem Ordner auch `remote`, die Adresse von `origin`. Sie taugt als eindeutiger Schlüssel für ein Repo, anders als der Ordnername.
 - `$.state` gilt je Session und übersteht ein Neuladen des Mod-Codes. `$.store` ist eine Datei je Mod und je Rechner.

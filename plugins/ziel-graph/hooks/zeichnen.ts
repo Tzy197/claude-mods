@@ -479,9 +479,19 @@ export const zeichneSvg = (
     bahnen.push(`<path d="M${xStamm} ${yTreff + 10} V${yEnde - 11}"${offen}${farbe({ s: 'stamm' })}/>`)
   }
 
-  // „Wartet auf“: dünne gestrichelte Linie vom Bündel zu seinem Ziel auf dem Stamm.
+  // „Wartet auf“: dünne gestrichelte Linie vom Bündel zu seinem Ziel, nur wenn das Ziel in
+  // einer anderen Bahn liegt. Was in derselben Bahn wartet, sagen die Reihenfolge und der
+  // Text der Zeile: Eine Linie dorthin liefe nur über die eigene Bahn.
+  const bahnVon = new Map(
+    bild.eintraege.flatMap(one => (one.typ === 'zeile' ? [[one.zeile.id, one.zeile.bahn] as const] : [])),
+  )
+
   for (const eintrag of bild.eintraege) {
     if (eintrag.typ !== 'zeile' || eintrag.zeile.wartetAuf === undefined || eintrag.bahn === null) {
+      continue
+    }
+
+    if (bahnVon.get(eintrag.zeile.wartetAuf) === eintrag.zeile.bahn) {
       continue
     }
 
@@ -494,10 +504,14 @@ export const zeichneSvg = (
       continue
     }
 
-    const yKnick = Math.max(yVon + 8, yNach - 34)
+    // Das Ziel liegt unter oder über dem Bündel, links oder rechts von seiner Bahn.
+    const hin = yNach >= yVon ? 1 : -1
+    const seite = x >= xNach ? 1 : -1
+    const zug = Math.min(28, Math.abs(x - xNach))
+    const yKnick = hin === 1 ? Math.max(yVon + 8, yNach - 34) : Math.min(yVon - 8, yNach + 34)
 
     bahnen.push(
-      `<path d="M${x} ${yVon + 8} V${yKnick} C${x} ${yNach - 8} ${xNach + 28} ${yNach} ${xNach + 8} ${yNach}"` +
+      `<path d="M${x} ${yVon + 8 * hin} V${yKnick} C${x} ${yNach - 8 * hin} ${xNach + zug * seite} ${yNach} ${xNach + 8 * seite} ${yNach}"` +
         ` fill="none" stroke-width="1.6" stroke-dasharray="5 4"${farbe({ s: `b-${eintrag.bahn.id}` })}/>`,
     )
   }
