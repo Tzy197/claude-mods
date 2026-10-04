@@ -14,7 +14,16 @@ import type {
 
 import type { ZielGraphChats, ZielGraphFarben, ZielGraphZustand } from '../types'
 
-import { alter, fasseZusammen, kurz, liesChats, neueFragen, pfadBefehl, zaehler } from './chats'
+import {
+  alter,
+  fasseZusammen,
+  kurz,
+  liesChats,
+  neueFragen,
+  nimmAuf,
+  nimmHeraus,
+  zaehler,
+} from './chats'
 import type { ChatZugang } from './chats'
 import { BEISPIEL } from './daten'
 import {
@@ -114,6 +123,25 @@ const lade = async ($: EngineInterface): Promise<void> => {
   }
 }
 
+// Die zwei Knöpfe der Leiste: diesen Chat von Hand aufnehmen oder herausnehmen.
+const nimmChatAuf = async ($: EngineInterface): Promise<void> => {
+  try {
+    await nimmAuf(zugang($))
+    await lade($)
+  } catch (fehler) {
+    $.ui.log(`Chat nicht aufgenommen: ${String(fehler)}`)
+  }
+}
+
+const nimmChatHeraus = async ($: EngineInterface): Promise<void> => {
+  try {
+    await nimmHeraus(zugang($))
+    await lade($)
+  } catch (fehler) {
+    $.ui.log(`Chat nicht herausgenommen: ${String(fehler)}`)
+  }
+}
+
 const nachAntwort = async ($: EngineInterface, antwort: string): Promise<void> => {
   if (await fasseZusammen(zugang($), antwort, letzterPrompt)) {
     await lade($)
@@ -132,6 +160,7 @@ type Teile = {
 // Der obere Teil der Leiste, immer da: die echten Chats des Repos.
 const zeichneChats = ($: EngineInterface, teile: Teile, laufend: ZielGraphChats): RenderElement => {
   const { Box, Text, Button } = teile
+  const istDabei = laufend.chats.some(one => one.id === laufend.ich)
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -142,14 +171,14 @@ const zeichneChats = ($: EngineInterface, teile: Teile, laufend: ZielGraphChats)
       {laufend.chats.length === 0 && (
         <Text dimColor wrap="wrap">
           {'Ein Chat mit eigenem Branch oder Ticket meldet sich nach seiner nächsten Antwort ' +
-            'selbst an, jeder andere mit /pfad <Name>.'}
+            'selbst an. Jeden anderen nimmt der Knopf „Diesen Chat aufnehmen“ auf.'}
         </Text>
       )}
 
       {laufend.chats.map(chat => (
         <Box flexDirection="column">
           <Text bold wrap="wrap">
-            {`${chat.frage === '' ? '○' : '●'} ${chat.name}`}
+            {`${chat.frage === '' ? '○' : '●'} ${chat.name === '' ? 'Neuer Chat' : chat.name}`}
             {chat.id === laufend.ich ? ' (dieser Chat)' : ''}
           </Text>
           <Text dimColor wrap="wrap">
@@ -166,8 +195,17 @@ const zeichneChats = ($: EngineInterface, teile: Teile, laufend: ZielGraphChats)
         </Box>
       ))}
 
-      <Box>
+      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
         <Button key="laden" label="Neu laden" onPress={() => void lade($)} />
+        {istDabei ? (
+          <Button
+            key="heraus"
+            label="Diesen Chat herausnehmen"
+            onPress={() => void nimmChatHeraus($)}
+          />
+        ) : (
+          <Button key="auf" label="Diesen Chat aufnehmen" onPress={() => void nimmChatAuf($)} />
+        )}
       </Box>
     </Box>
   )
@@ -427,11 +465,6 @@ export const register: Register = on => {
       name: 'graph',
       description: 'Den Ziel-Graphen als Seitenleiste öffnen',
     })
-    await $.command.register({
-      name: 'pfad',
-      description: 'Diesen Chat im Ziel-Graphen anmelden oder umbenennen, mit "aus" abmelden',
-      argumentHint: '[Name | aus]',
-    })
 
     await lade($)
     $.clock.every(TAKT_MS, () => void lade($))
@@ -465,20 +498,6 @@ export const register: Register = on => {
     const lage = offen.isPlaced ? 'geöffnet.' : `wartet und wird nicht gezeichnet: ${offen.reason}`
 
     return { text: `Ziel-Graph ${lage} (Oberflächen: ${flaechen})` }
-  })
-
-  on('command.run', { command: 'pfad' }, async ($, e) => {
-    const eingabe = e.args.trim()
-    const text = await pfadBefehl(zugang($), eingabe)
-
-    await lade($)
-
-    // Wer sich abmeldet, will die Leiste nicht aufgedrängt bekommen.
-    if (eingabe.toLowerCase() !== 'aus') {
-      await oeffne($)
-    }
-
-    return { text }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

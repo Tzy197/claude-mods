@@ -271,7 +271,9 @@ for (const surface of ['desktop', 'terminal', 'vscode', 'mobile'] as const) {
 
     expect(ohne).toContain('0 Chats, keiner wartet auf dich')
     expect(ohne).toContain('meldet sich nach seiner nächsten Antwort selbst an')
-    expect(ohne).toContain('/pfad <Name>')
+    expect(ohne).toContain('Diesen Chat aufnehmen')
+    expect(await ui.findAll({ key: 'auf' })).toHaveLength(1)
+    expect(await ui.findAll({ key: 'heraus' })).toHaveLength(0)
     expect(ohne).toContain('Noch kein Plan')
     expect(ohne).toContain('Beispiel-Graph zeigen')
     expect(ohne).not.toContain('Endziel: der Shop im Betrieb')
@@ -426,31 +428,32 @@ test('ein Ticket im ersten Auftrag meldet auch einen Chat auf main an (GitLab)',
   })
 })
 
-test('/pfad meldet an und benennt um, /pfad aus meldet ab und der Chat bleibt draußen', async ($, on) => {
+test('der Knopf nimmt einen Chat auf main auf, das Modell benennt ihn, der zweite Knopf nimmt ihn heraus', async ($, on) => {
   const welt = baue(on, {
     branch: 'main',
-    modell: '{"name": "Vom Modell", "stand": "Zwei Kategorien sind aufgeräumt.", "naechster": "Die dritte Kategorie.", "frage": ""}',
+    modell: '{"name": "Katalog aufräumen", "stand": "Zwei Kategorien sind aufgeräumt.", "naechster": "Die dritte Kategorie.", "frage": ""}',
   })
 
   await starte($)
-  expect(await befehl($, 'pfad')).toBe('Dieser Chat steht nicht im Ziel-Graphen. Anmelden mit: /pfad <Name>')
-
-  expect(await befehl($, 'pfad', '  Katalog aufräumen ')).toBe(
-    'Dieser Chat steht jetzt als „Katalog aufräumen“ im Ziel-Graphen.',
-  )
-  expect(gespeichert(welt, EIGENE)).toMatchObject({ id: 'sitzung-a', name: 'Katalog aufräumen', aktiv: true, branch: 'main' })
-  expect(await befehl($, 'pfad')).toBe('Dieser Chat steht als „Katalog aufräumen“ im Ziel-Graphen.')
-  expect(welt.geoeffnet.at(-1)).toEqual({ id: 'ziel-graph', title: 'Ziel-Graph' })
 
   const ui = await $.ui.mount({ ...ZIEL, surface: 'desktop' })
-  const angemeldet = await inhalt(ui)
 
-  expect(angemeldet).toContain('1 Chat, keiner wartet auf dich')
-  expect(angemeldet).toContain('○ Katalog aufräumen (dieser Chat)')
-  expect(angemeldet).toContain('noch nie · main')
-  expect(angemeldet).toContain('Noch kein Stand. Er kommt nach der nächsten Antwort.')
+  expect(await ui.findAll({ key: 'auf' })).toHaveLength(1)
+  expect(await ui.findAll({ key: 'heraus' })).toHaveLength(0)
 
-  // Wer von Hand angemeldet ist, bekommt seinen Stand auch auf main, und behält seinen Namen.
+  await ui.press({ key: 'auf' })
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ id: 'sitzung-a', name: '', aktiv: true, branch: 'main' })
+
+  const aufgenommen = await inhalt(ui)
+
+  expect(aufgenommen).toContain('1 Chat, keiner wartet auf dich')
+  expect(aufgenommen).toContain('○ Neuer Chat (dieser Chat)')
+  expect(aufgenommen).toContain('noch nie · main')
+  expect(aufgenommen).toContain('Noch kein Stand. Er kommt nach der nächsten Antwort.')
+  expect(await ui.findAll({ key: 'auf' })).toHaveLength(0)
+  expect(await ui.findAll({ key: 'heraus' })).toHaveLength(1)
+
+  // Wer von Hand aufgenommen ist, bekommt seinen Stand auch auf main; den Namen gibt das Modell.
   await antworte($, welt, 'Zwei Kategorien sind aufgeräumt.')
 
   const mitStand = await inhalt(ui)
@@ -459,16 +462,10 @@ test('/pfad meldet an und benennt um, /pfad aus meldet ab und der Chat bleibt dr
   expect(mitStand).toContain('Zwei Kategorien sind aufgeräumt.')
   expect(mitStand).toContain('Weiter: Die dritte Kategorie.')
 
-  expect(await befehl($, 'pfad', 'Katalog')).toBe('Dieser Chat steht jetzt als „Katalog“ im Ziel-Graphen.')
-  expect(await inhalt(ui)).toContain('○ Katalog (dieser Chat)')
-  expect(await inhalt(ui)).toContain('Zwei Kategorien sind aufgeräumt.')
-
-  const geoeffnet = welt.geoeffnet.length
-
-  expect(await befehl($, 'pfad', 'Aus')).toBe('Dieser Chat ist abgemeldet und bleibt draußen.')
-  expect(welt.geoeffnet).toHaveLength(geoeffnet)
-  expect(gespeichert(welt, EIGENE)).toMatchObject({ name: 'Katalog', aktiv: false })
+  await ui.press({ key: 'heraus' })
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ name: 'Katalog aufräumen', aktiv: false })
   expect(await inhalt(ui)).toContain('0 Chats, keiner wartet auf dich')
+  expect(await ui.findAll({ key: 'auf' })).toHaveLength(1)
 
   // Auch nach der nächsten Antwort bleibt er draußen: kein Modell-Aufruf, keine neue Datei.
   await antworte($, welt, 'Die dritte Kategorie ist aufgeräumt.')
@@ -476,12 +473,16 @@ test('/pfad meldet an und benennt um, /pfad aus meldet ab und der Chat bleibt dr
   expect(welt.fragen).toHaveLength(1)
   expect(gespeichert(welt, EIGENE)).toMatchObject({ aktiv: false, stand: 'Zwei Kategorien sind aufgeräumt.' })
   expect(await inhalt(ui)).toContain('0 Chats, keiner wartet auf dich')
-  expect(await befehl($, 'pfad')).toBe('Dieser Chat ist abgemeldet. Wieder anmelden mit: /pfad <Name>')
+
+  // Wieder aufgenommen behält er Namen und Stand.
+  await ui.press({ key: 'auf' })
+  expect(await inhalt(ui)).toContain('○ Katalog aufräumen (dieser Chat)')
+  expect(await inhalt(ui)).toContain('Zwei Kategorien sind aufgeräumt.')
 
   await ui.unmount()
 })
 
-test('wer während der Zusammenfassung /pfad tippt, behält Namen und Abmeldung', async ($, on) => {
+test('was sich während der Zusammenfassung an der eigenen Datei ändert, gilt: Name und Abmeldung', async ($, on) => {
   const welt = baue(on, {
     branch: 'kasse-entwurf',
     modell: '{"name": "Vom Modell", "stand": "Der Entwurf steht.", "naechster": "", "frage": ""}',
@@ -615,7 +616,7 @@ test('fehlt glab, bleibt nur der Ticket-Titel leer', async ($, on) => {
   expect(welt.fragen).toHaveLength(2)
 })
 
-test('ganz ohne Repo und ohne git gilt der Ordner der Session, und /pfad meldet an', async ($, on) => {
+test('ganz ohne Repo und ohne git gilt der Ordner der Session, und der Knopf nimmt den Chat auf', async ($, on) => {
   // git fehlt: der Branch bleibt leer, und von selbst meldet sich niemand an.
   const welt = baue(on, { remote: undefined, branch: null })
 
@@ -623,11 +624,14 @@ test('ganz ohne Repo und ohne git gilt der Ordner der Session, und /pfad meldet 
   await antworte($, welt, 'Fertig.')
   expect(welt.dateien.size).toBe(0)
 
-  await befehl($, 'pfad', 'Notizen')
+  const ui = await $.ui.mount({ ...ZIEL, surface: 'terminal' })
+
+  await ui.press({ key: 'auf' })
   expect(gespeichert(welt, `${HEIM}/.claude/ziel-graph/lokal+arbeit+shop/sitzung-a.json`)).toMatchObject({
-    name: 'Notizen',
+    aktiv: true,
     branch: '',
   })
+  await ui.unmount()
 })
 
 // Tickets als Markdown, so wie die Skills sie anlegen: je Vorhaben ab 01 nummeriert.

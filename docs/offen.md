@@ -12,6 +12,7 @@ Stand: 2026-10-04. Gilt für alle Mods in diesem Repo. Das Pfad-Board ist im Zie
 - **Lizenz: MIT.** Der Text steht in `LICENSE`.
 - **Commits tragen die GitHub-Adresse ohne Postfach,** nicht die private Adresse. Das ist je Rechner im Repo einzustellen (`git config user.email`), bevor dort committet wird.
 - **Nichts wandert zwischen Rechnern.** Der Nutzer arbeitet am zweiten Rechner immer zugeschaltet (Remote-Session). Der Rechner mit dem Repo führt die Session: Dort laufen die Hooks, dort liegen Chat-Stände und abgeleiteter Plan. Chats, die nur auf dem anderen Rechner leben, gibt es nicht. Entscheidung 9 der Spezifikation bleibt, ein Abgleich wird nicht gebaut.
+- **Nur ein Befehl: `/graph`.** Den Befehl `/pfad` gibt es nicht mehr. Ein Chat ohne eigenen Branch und ohne Ticket kommt über den Knopf „Diesen Chat aufnehmen“ in die Leiste, „Diesen Chat herausnehmen“ nimmt ihn wieder heraus. Den Namen gibt das Modell nach der ersten Antwort; von Hand umbenennen geht nicht mehr. Von selbst meldet sich weiter nur ein Chat mit eigenem Branch oder Ticket an, damit nicht jeder kleine Chat einen Modell-Aufruf kostet.
 - **Verworfen: Chat-Stände über den Git-Server teilen.** Im Grilling durchgespielt (eigene Spur `refs/ziel-graph/staende`, je Projekt einzuschalten) und als unnötig erkannt. Falls es doch einmal gebraucht wird: Mit einfachem Git lief die Technik in einem lokalen Versuch, GitLab nimmt solche Spuren laut Quellcode an, für GitHub fehlt ein Beleg. Wer das Projekt lesen darf, könnte die Stände dann holen.
 
 ## Woher der Graph seine Schritte nimmt

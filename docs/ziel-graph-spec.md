@@ -29,7 +29,7 @@ Der Ziel-Graph zeigt in der Seitenleiste, wo ein Projekt steht: welches Endziel 
 1. **Feste Zielliste.** Der Agent schlägt die Ziele einmal vor, der Nutzer bestätigt und benennt sie. Danach ordnet der Agent nur noch zu. Ein neues Ziel meldet er als Vorschlag. Ziele dürfen in der Liste stehen, auch wenn es noch keine Tickets für sie gibt.
 2. **Endziel.** Es gibt genau ein Endziel. Der letzte fachliche Schritt davor ist ein eigenes Ziel. Auch Bahnen für Werkzeug und Tests münden ins Endziel.
 3. **Festlegungen.** Korrekturen des Nutzers werden als eigene Sätze gespeichert, nicht durch Ändern der abgeleiteten Plan-Datei. Sie gewinnen bei jedem Ableiten. Nach jedem Ableiten zeigt die Leiste, was sich geändert hat.
-4. **Chats im Graphen.** Hat ein Chat ein Ticket, bestimmt das Ticket seinen Platz. Sonst ordnet das Modell ihn einem Ziel zu. Ein Chat, der an mehreren Zielen arbeitet, steht als „übergreifend“ neben dem Graphen. Der Befehl `/pfad` legt den Platz von Hand fest.
+4. **Chats im Graphen.** Hat ein Chat ein Ticket, bestimmt das Ticket seinen Platz. Sonst ordnet das Modell ihn einem Ziel zu. Ein Chat, der an mehreren Zielen arbeitet, steht als „übergreifend“ neben dem Graphen. Den Platz legt der Nutzer in der Leiste von Hand fest; einen Befehl `/pfad` gibt es seit dem 2026-10-04 nicht mehr.
 5. **Parallele Wege.** Eine Bahn ist keine Kette. Mehrere Wege dürfen nebeneinander laufen, auch wenn sie fachlich zusammengehören. Abhängigkeiten gelten zwischen einzelnen Zielen, und Wege fallen in Treffpunkten zusammen.
 6. **Lebenslauf.** Alles startet als Ziel. Hat es seine Basis erreicht, wird es zum Dauerläufer. Ohne Aktivität klappt ein Dauerläufer zu einer Zeile ein. Neue Aktivität klappt ihn wieder auf. Steht ein großer Umbau an, wird ein Dauerläufer wieder zum Ziel.
 7. **Basis erreicht.** Den Übergang vom Ziel zum Dauerläufer schlägt der Agent vor, der Nutzer bestätigt. Die Antwort ist eine Festlegung. Der Rückweg läuft genauso.
@@ -75,12 +75,12 @@ Der Ziel-Graph hat das Pfad-Board abgelöst (Entscheidung vom 2026-10-04). Was d
 | Schritt | Inhalt | Stand |
 | --- | --- | --- |
 | 1 · Nur zeichnen | Graph in der Leiste mit festen Beispieldaten, zwei Ansichten, Aufklappen, Filter, Ziel-Auswahl | gebaut; `validate` und 13 Tests grün; am 2026-10-04 in der Desktop-App angesehen, die Leiste erscheint |
-| 2 · Chats übernehmen | Aus dem Pfad-Board: Selbst-Anmeldung eines Chats, Stand nach jeder Antwort (Stand, nächster Schritt, offene Frage), Hinweis bei neuer Frage. Ohne Plan zeigt der Graph nur die laufenden Chats. | gebaut am 2026-10-04 (Version 0.2.0); `validate`, 38 Tests und die Typprüfung grün; in der echten App noch nicht angesehen. Die Chat-Logik liegt in `plugins/ziel-graph/hooks/chats.ts`. Anders als das Pfad-Board öffnet der Mod die Leiste nicht von selbst; sie kommt mit `/graph` oder `/pfad`. |
+| 2 · Chats übernehmen | Aus dem Pfad-Board: Selbst-Anmeldung eines Chats, Stand nach jeder Antwort (Stand, nächster Schritt, offene Frage), Hinweis bei neuer Frage. Ohne Plan zeigt der Graph nur die laufenden Chats. | gebaut am 2026-10-04 (Version 0.2.1); `validate`, 38 Tests und die Typprüfung grün; in der echten App noch nicht angesehen. Die Chat-Logik liegt in `plugins/ziel-graph/hooks/chats.ts`. Anders als das Pfad-Board öffnet der Mod die Leiste nicht von selbst; sie kommt mit `/graph`. Aufnehmen und Herausnehmen eines Chats geht per Knopf in der Leiste. |
 | 3 · Zielliste und Festlegungen | Dateien, unterer Teil der Leiste (Vorschläge, Festlegungen, Eingabe), Sammeln bis zum Merge Request | offen |
 | 4 · Ableiten | Knopf „Neu ableiten“: Bündel, Bahnen, „wartet auf“, Vorschläge | offen |
 | 5 · Lebendig machen | Zustand live aus dem Tracker, eingeklappte Dauerläufer, Merge Request auf Zuruf | offen |
 
-Aus dem Pfad-Board fallen weg: die eigene Leiste, `/board`, `/ziel` und das Ziel aus der Karte (die Zielliste ersetzt es). `/pfad` bleibt, um den Platz eines Chats von Hand festzulegen. Am 2026-10-04 wurde `plugins/pfad-board` aus dem Repo entfernt. Sein Code steht noch im ersten Commit (`cdb2fab`).
+Aus dem Pfad-Board sind weggefallen: die eigene Leiste, `/board`, `/ziel`, `/pfad` und das Ziel aus der Karte (die Zielliste ersetzt es). Am 2026-10-04 wurde `plugins/pfad-board` aus dem Repo entfernt. Sein Code steht noch im ersten Commit (`cdb2fab`).
 
 In Schritt 1 ist die Stelle für Schritt 3 vorbereitet: `const DATEN = BEISPIEL` in `plugins/ziel-graph/hooks/register.tsx`. Die Form der Daten steht in `plugins/ziel-graph/types/index.d.ts`, die Zeichenlogik ohne Engine-Zugriff in `hooks/zeichnen.ts`.
 

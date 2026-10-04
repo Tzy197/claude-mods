@@ -6,7 +6,7 @@ Eigene Mods für Claude Code (Desktop-App und Terminal). Ein Mod ist ein Plugin 
 
 | Mod | Befehle | Was er tut |
 | --- | --- | --- |
-| `ziel-graph` | `/graph`, `/pfad` | Zeigt die laufenden Chats eines Repos: Stand, nächster Schritt, offene Frage. Ein Chat mit eigenem Branch oder Ticket meldet sich selbst an, jeder andere mit `/pfad <Name>`. Der hochkant laufende Graph der Ziele zeigt bis zum ersten Plan nur erfundene Beispieldaten, auf Knopfdruck. Stand: Schritt 2 von 5. |
+| `ziel-graph` | `/graph` | Zeigt die laufenden Chats eines Repos: Stand, nächster Schritt, offene Frage. Ein Chat mit eigenem Branch oder Ticket meldet sich selbst an, jeden anderen nimmt ein Knopf in der Leiste auf. Der hochkant laufende Graph der Ziele zeigt bis zum ersten Plan nur erfundene Beispieldaten, auf Knopfdruck. Stand: Schritt 2 von 5. |
 
 ## Auf einem Rechner einrichten
 
@@ -20,12 +20,16 @@ claude plugin marketplace add Tzy197/claude-mods
 claude plugin install ziel-graph@claude-mods
 ```
 
-Der Ziel-Graph ersetzt das frühere Pfad-Board. Ist davon noch eine alte Fassung lokal installiert (`~/.claude/skills/pfad-board`), muss sie vorher weg: Sonst beantworten beide Mods `/pfad` und fassen jede Antwort doppelt zusammen.
+Der Ziel-Graph ersetzt das frühere Pfad-Board. Ist davon noch eine alte Fassung lokal installiert (`~/.claude/skills/pfad-board`), muss sie vorher weg: Sonst fassen beide Mods jede Antwort zusammen.
 
 ## Aktualisieren
 
 ```bash
 claude plugin marketplace update claude-mods
+```
+
+```bash
+claude plugin update ziel-graph@claude-mods
 ```
 
 Danach die App neu starten: Ein Mod lädt beim Start der App.

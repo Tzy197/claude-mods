@@ -29,7 +29,7 @@ export type ZielGraphChat = {
   // die id der Session
   id: string
   name: string
-  // false: mit /pfad aus abgemeldet, der Chat bleibt draußen
+  // false: per Knopf herausgenommen, der Chat bleibt draußen
   aktiv: boolean
   branch: string
   stand: string

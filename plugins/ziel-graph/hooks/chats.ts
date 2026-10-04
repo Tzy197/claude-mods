@@ -419,7 +419,7 @@ export const fasseZusammen = async (
       zugang.melde(`Zusammenfassung blieb aus (${grund}); Stand unverändert.`)
     }
 
-    // /pfad kann während des Modell-Aufrufs gelaufen sein: Abmeldung und Name von dort gelten.
+    // Während des Modell-Aufrufs kann der Chat herausgenommen worden sein: das gilt.
     const inzwischen = (await liesEigene(zugang, dir)) ?? ich
 
     if (!inzwischen.aktiv) {
@@ -445,31 +445,19 @@ export const fasseZusammen = async (
   }
 }
 
-// ---------- Der Befehl /pfad ----------
+// ---------- Aufnehmen und Herausnehmen ----------
 
-// Ohne Eingabe sagt /pfad, welcher Chat das ist; mit einem Namen meldet er den Chat an
-// oder benennt ihn um; mit "aus" meldet er ihn ab. Die Antwort ist der Text für den Nutzer.
-export const pfadBefehl = async (zugang: ChatZugang, eingabe: string): Promise<string> => {
+const setzeAktiv = async (zugang: ChatZugang, aktiv: boolean): Promise<void> => {
   const dir = await ordner(zugang)
-  const eigene = await liesEigene(zugang, dir)
+  const ich =
+    (await liesEigene(zugang, dir)) ?? neuerChat(await zugang.sitzung(), await zweig(zugang))
 
-  if (eingabe === '') {
-    return eigene === null
-      ? 'Dieser Chat steht nicht im Ziel-Graphen. Anmelden mit: /pfad <Name>'
-      : eigene.aktiv
-        ? `Dieser Chat steht als „${eigene.name}“ im Ziel-Graphen.`
-        : 'Dieser Chat ist abgemeldet. Wieder anmelden mit: /pfad <Name>'
-  }
-
-  const ich = eigene ?? neuerChat(await zugang.sitzung(), await zweig(zugang))
-
-  if (eingabe.toLowerCase() === 'aus') {
-    await schreibe(zugang, dir, { ...ich, aktiv: false })
-
-    return 'Dieser Chat ist abgemeldet und bleibt draußen.'
-  }
-
-  await schreibe(zugang, dir, { ...ich, name: eingabe, aktiv: true })
-
-  return `Dieser Chat steht jetzt als „${eingabe}“ im Ziel-Graphen.`
+  await schreibe(zugang, dir, { ...ich, aktiv })
 }
+
+// Nimmt diesen Chat von Hand in den Graphen auf: für einen Chat ohne eigenen Branch und
+// ohne Ticket. Den Namen gibt ihm das Modell nach der nächsten Antwort.
+export const nimmAuf = (zugang: ChatZugang): Promise<void> => setzeAktiv(zugang, true)
+
+// Nimmt diesen Chat heraus. Er bleibt draußen, bis er wieder aufgenommen wird.
+export const nimmHeraus = (zugang: ChatZugang): Promise<void> => setzeAktiv(zugang, false)
