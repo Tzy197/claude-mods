@@ -1,0 +1,6 @@
+{
+  "name": "orchestrator",
+  "version": "0.1.0",
+  "description": "Breite Fläche neben dem Chat: der Plan des Repos als Prozesskarten, je Strang eine Spalte, mit GOAL.md als Anker. Aufträge starten und wartende Chats beantworten, ohne den Chat zu wechseln",
+  "types": "./types/index.d.ts"
+}
