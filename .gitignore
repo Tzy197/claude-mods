@@ -1,0 +1,5 @@
+# Von der Engine beim Laden geschriebene Typen
+**/.claude-plugin/types/
+
+# Übergabe zwischen Sessions, bleibt lokal
+UEBERGABE.md

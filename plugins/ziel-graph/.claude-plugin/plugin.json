@@ -1,0 +1,6 @@
+{
+  "name": "ziel-graph",
+  "version": "0.1.0",
+  "description": "Seitenleiste mit einem hochkant laufenden Ziel-Graphen: Bahnen je Ziel, Bündel je Zeile, Zonen hinter uns, jetzt möglich, später",
+  "types": "./types/index.d.ts"
+}

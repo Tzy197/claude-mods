@@ -1,0 +1,19 @@
+{
+  "name": "claude-mods",
+  "owner": {
+    "name": "Tzy197"
+  },
+  "description": "Eigene Mods für Claude Code: Pfad-Board und Ziel-Graph.",
+  "plugins": [
+    {
+      "name": "pfad-board",
+      "source": "./plugins/pfad-board",
+      "description": "Seitenleiste, die alle parallelen Chats eines Repos als Pfade zeigt: Stand, nächster Schritt, offene Frage."
+    },
+    {
+      "name": "ziel-graph",
+      "source": "./plugins/ziel-graph",
+      "description": "Seitenleiste mit einem hochkant laufenden Graphen der Ziele und Schritte. Schritt 1: nur zeichnen, mit Beispieldaten."
+    }
+  ]
+}
