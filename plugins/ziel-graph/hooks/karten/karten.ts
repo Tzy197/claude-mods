@@ -1,4 +1,5 @@
 import type {
+  ZielGraphAenderungen,
   ZielGraphBuendel,
   ZielGraphChat,
   ZielGraphChats,
@@ -10,7 +11,7 @@ import type {
 import { nameVon } from '../chats'
 import { ENDZIEL } from '../fest'
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
-import { endzielZeile, laufende, zielTitel } from '../plan/lesen'
+import { STAND_WORT, aenderungsMarke, endzielZeile, laufende, mitMarke, schrittMeta, zielTitel } from '../plan/lesen'
 import { mehrzahl } from '../worte'
 
 // Aus dem einen Plan und den laufenden Chats werden Karten: was die Fläche zeigt, was die
@@ -83,13 +84,6 @@ const ZEICHEN_TEXT: Record<KartenZeichen, string> = {
   endziel: '◎',
 }
 
-const STAND_WORT: Record<ZielGraphBuendel['stand'], string> = {
-  erledigt: 'erledigt',
-  bereit: 'bereit',
-  teilweise: 'zum Teil möglich',
-  blockiert: 'wartet',
-}
-
 export const zeichenText = (karte: Karte): string => ZEICHEN_TEXT[karte.zeichen]
 
 export const chatMarke = (karte: Karte): string =>
@@ -135,7 +129,14 @@ const wohinVon = (plan: ZielGraphPlan, strang: ZielGraphStrang): string => {
 
 // Macht aus dem Plan und den laufenden Chats, was die Fläche zeigt. `wahl` ist die Karte,
 // die der Nutzer gewählt hat; ohne Wahl gilt die erste, an der ein Chat auf ihn wartet.
-export const sicht = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string): Sicht => {
+// `aenderungen` ist, was der letzte Lauf geändert hat: Eine Karte, die er neu gebracht,
+// verschoben oder umbenannt hat, sagt das vorn in ihrer zweiten Zeile.
+export const sicht = (
+  plan: ZielGraphPlan,
+  chats: ZielGraphChats,
+  wahl: string,
+  aenderungen: ZielGraphAenderungen | null = null,
+): Sicht => {
   const alle: Karte[] = []
   const spalten = plan.straenge.map((strang): Spalte => {
     const eigene = plan.buendel.filter(one => one.strang === strang.id)
@@ -168,7 +169,7 @@ export const sicht = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string):
         zone: eines.zone,
         zeichen: chat === '' ? eines.stand : 'laeuft',
         titel: eines.titel,
-        meta: metaVon(plan, eines),
+        meta: mitMarke(metaVon(plan, eines), aenderungsMarke(aenderungen, 'buendel', eines.id)),
         chat,
         leise: eines.zone === 'spaeter',
         gewaehlt: false,
@@ -189,11 +190,14 @@ export const sicht = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string):
   const stamm: Karte[] = plan.stamm.map(schritt => {
     const dabei = plan.straenge.filter(one => one.gehoertZu === schritt.id).map(one => one.name)
     const marke = schritt.vermutet ? 'vermutet' : plan.mitGoal && !schritt.inGoal ? 'nicht in GOAL.md' : ''
+    // Ein abgehaktes Zwischenziel sagt „erreicht“ genau einmal, was auch immer das Modell dazu schreibt.
+    const eigen = schrittMeta(schritt)
     const meta = [
+      aenderungsMarke(aenderungen, 'schritt', schritt.id),
       schritt.erreicht ? 'erreicht' : '',
-      /vermutet/i.test(schritt.meta) ? '' : marke,
-      schritt.meta,
-      schritt.meta === '' && dabei.length > 0 ? `Stränge: ${dabei.join(', ')}` : '',
+      /vermutet/i.test(eigen) ? '' : marke,
+      eigen,
+      eigen === '' && dabei.length > 0 ? `Stränge: ${dabei.join(', ')}` : '',
     ]
       .filter(one => one !== '')
       .join(' · ')

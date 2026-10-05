@@ -172,13 +172,14 @@ test('ein Lauf, der sich nie mehr meldet, sperrt den Knopf nicht für immer und 
   await ui.unmount()
 })
 
-test('die Doku ist gedeckelt: jede Datei bei 12000 Zeichen, alle zusammen bei 60000', async ($, on) => {
+test('die Doku ist gedeckelt: jede Datei bei 24000 Zeichen, alle zusammen bei 96000', async ($, on) => {
   const welt = baue(on, { modell: { isAnswered: true, usage: VERBRAUCH, text: antwortOhneGoal({ chats: [] }) } })
 
+  // Eine gewöhnliche Datei von 20000 Zeichen geht ganz ans Modell.
   welt.dateien.set(`${WURZEL}/README.md`, `# Shop\n${'Der Katalog wächst. '.repeat(1000)}`)
 
   for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) {
-    welt.dateien.set(`${WURZEL}/docs/${name}.md`, `# Datei ${name}\n${'x'.repeat(13_000)}`)
+    welt.dateien.set(`${WURZEL}/docs/${name}.md`, `# Datei ${name}\n${'x'.repeat(25_000)}`)
   }
 
   const ui = await $.ui.mount({ ...GRAPH, surface: 'terminal' })
@@ -189,18 +190,25 @@ test('die Doku ist gedeckelt: jede Datei bei 12000 Zeichen, alle zusammen bei 60
   const quellen = lauf.quellen as { doku: { datei: string; zeichen: number; gesendet: number; gekuerzt: boolean }[]; hinweise: string[] }
 
   expect(quellen.doku).toEqual([
-    { datei: 'README.md', zeichen: 20_007, gesendet: 12_000, gekuerzt: true },
-    { datei: 'docs/a.md', zeichen: 13_010, gesendet: 12_000, gekuerzt: true },
-    { datei: 'docs/b.md', zeichen: 13_010, gesendet: 12_000, gekuerzt: true },
-    { datei: 'docs/c.md', zeichen: 13_010, gesendet: 12_000, gekuerzt: true },
-    { datei: 'docs/d.md', zeichen: 13_010, gesendet: 12_000, gekuerzt: true },
+    { datei: 'README.md', zeichen: 20_007, gesendet: 20_007, gekuerzt: false },
+    { datei: 'docs/a.md', zeichen: 25_010, gesendet: 24_000, gekuerzt: true },
+    { datei: 'docs/b.md', zeichen: 25_010, gesendet: 24_000, gekuerzt: true },
+    { datei: 'docs/c.md', zeichen: 25_010, gesendet: 24_000, gekuerzt: true },
+    // Die letzte Datei bekommt, was von den 96000 Zeichen noch übrig ist.
+    { datei: 'docs/d.md', zeichen: 25_010, gesendet: 3_993, gekuerzt: true },
   ])
-  expect(quellen.hinweise).toContain('README.md gekürzt: 12000 von 20007 Zeichen.')
-  expect(quellen.hinweise).toContain('docs/e.md ausgelassen: Die Grenze für die Doku ist erreicht.')
-  expect(quellen.hinweise).toContain('docs/f.md ausgelassen: Die Grenze für die Doku ist erreicht.')
+  expect(quellen.hinweise).toEqual([
+    'docs/a.md gekürzt: 24000 von 25010 Zeichen.',
+    'docs/b.md gekürzt: 24000 von 25010 Zeichen.',
+    'docs/c.md gekürzt: 24000 von 25010 Zeichen.',
+    'docs/d.md gekürzt: 3993 von 25010 Zeichen.',
+    'docs/e.md ausgelassen: Die Grenze für die Doku ist erreicht.',
+    'docs/f.md ausgelassen: Die Grenze für die Doku ist erreicht.',
+  ])
+  expect(welt.fragen[0]?.prompt).toContain('<doku datei="README.md">')
   expect(welt.fragen[0]?.prompt).toContain('<doku datei="docs/d.md" gekuerzt="ja">')
   expect(welt.fragen[0]?.prompt).not.toContain('# Datei e')
-  expect((welt.fragen[0]?.prompt ?? '').length < 61_500).toBe(true)
+  expect((welt.fragen[0]?.prompt ?? '').length < 97_500).toBe(true)
 
   await ui.unmount()
 })

@@ -12,7 +12,18 @@ import type {
 import { alter, nameVon } from '../chats'
 import { MODELL } from '../fest'
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
-import { endzielAuftrag, endzielZeile, faktenZeile, goalAuftrag, laufZeile, strangAuftrag } from '../plan/lesen'
+import {
+  aenderungsListe,
+  aenderungsZeile,
+  endzielAuftrag,
+  endzielZeile,
+  faktenZeile,
+  festAuftrag,
+  festZeile,
+  goalAuftrag,
+  laufZeile,
+  strangAuftrag,
+} from '../plan/lesen'
 import type { Taten, Teile } from '../teile'
 import { LEERER_PLAN } from '../zustand'
 
@@ -22,11 +33,13 @@ import { DETAIL, ZELLE_PX, baueFlaeche } from './zeichnen'
 import type { Bild, Flaeche, Zelle } from './zeichnen'
 
 // Die breite Ansicht `/orchestrator`: der Plan als Prozesskarten, die Detail-Fläche zur
-// gewählten Karte und was beim Ableiten aufgefallen ist. Hier wird nur gezeichnet, ohne `$`:
-// Den Zustand und die Handgriffe der Knöpfe reicht register.tsx.
+// gewählten Karte, die Festlegungen des Nutzers, was der letzte Lauf geändert hat und was
+// beim Ableiten aufgefallen ist. Hier wird nur gezeichnet, ohne `$`: Den Zustand und die
+// Handgriffe der Knöpfe reicht register.tsx.
 
-// Mehr Hinweise zeigt die Leiste nicht; alle stehen in der Datei des Plans.
+// Mehr Hinweise und mehr Änderungen zeigt die Leiste nicht; alle stehen in der Datei des Plans.
 const HINWEISE = 12
+const AENDERUNGEN = 12
 // Der Platz in der Detail-Fläche für Zusätze, die sich von außen einhängen.
 export const PLATZ = 'detail-zusatz'
 
@@ -44,6 +57,8 @@ export type KartenLage = {
   wahl: ZielGraphKartenSicht
   // die Breite der Leiste in Zeichenzellen
   zellen: number
+  // was im Feld für eine neue Festlegung steht
+  entwurf: string
 }
 
 const zeichneBild = (teile: Teile, bild: Bild): RenderElement | null => {
@@ -405,13 +420,127 @@ const zeichneGoal = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): Rende
   ) : null
 }
 
-// Die ganze Leiste: Kopf und Knöpfe, der Stand von GOAL.md, die Karten, die Detail-Fläche
-// und was beim Ableiten aufgefallen ist.
+// Das Feld für eine neue Festlegung, immer da und an keine Karte gebunden: gleich unter
+// „Neu ableiten“, weil der Satz ab dem nächsten Ableiten gilt. Darüber steht, wie viele
+// Festlegungen es gibt und wie viele noch nicht in GOAL.md stehen. Die Liste selbst steht
+// weiter unten.
+const zeichneFestEingabe = (teile: Teile, lage: KartenLage, taten: Taten): RenderElement => {
+  const { Box, Text, Button, Input } = teile
+  const { stand } = lage
+  const { liste, geaendert } = stand.festlegungen
+  const hatLokale = liste.some(one => one.ort === 'lokal')
+
+  return (
+    <Box flexDirection="column">
+      <Text bold wrap="wrap">
+        {festZeile(liste)}
+      </Text>
+      {liste.length === 0 && (
+        <Text dimColor wrap="wrap">
+          {'Eine Festlegung ist ein Satz von dir, der bei jedem Ableiten gewinnt: wohin etwas ' +
+            'gehört, was zuerst kommt, was zusammengehört.'}
+        </Text>
+      )}
+      {geaendert && stand.plan !== null && (
+        <Text wrap="wrap">
+          Die Festlegungen sind andere als beim letzten Ableiten: „Neu ableiten“ wendet sie an.
+        </Text>
+      )}
+      {Input === null ? (
+        <Text dimColor wrap="wrap">
+          Diese Oberfläche zeichnet kein Eingabefeld: Eine neue Festlegung gibst du am Rechner ein.
+        </Text>
+      ) : (
+        <Input
+          key="fest-eingabe"
+          placeholder="Neue Festlegung: ein Satz, der bei jedem Ableiten gewinnt …"
+          value={lage.entwurf}
+          submitLabel="festlegen"
+          onInput={wert => taten.merkeFest(wert)}
+          onSubmit={wert => taten.festlegen(wert)}
+        />
+      )}
+      {(Input !== null || hatLokale) && (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+          {Input !== null && <Button key="festlegen" label="Festlegen" onPress={() => taten.festlegen()} />}
+          {hatLokale && (
+            <Button
+              key="fest-eintragen"
+              label="In GOAL.md eintragen lassen"
+              onPress={() => taten.lege(festAuftrag(liste, stand.goal.vorhanden))}
+            />
+          )}
+        </Box>
+      )}
+    </Box>
+  )
+}
+
+// Was der letzte Lauf am Plan davor geändert hat: eine Zeile, die zählt, und darunter je
+// Änderung eine. Sie steht bis zum nächsten Ableiten da. Ohne Plan davor steht nichts da.
+const zeichneAenderungen = (teile: Teile, stand: ZielGraphGeladen): RenderElement | null => {
+  const { Box, Text } = teile
+  const kopf = aenderungsZeile(stand.aenderungen)
+  const liste = aenderungsListe(stand.aenderungen)
+
+  if (stand.plan === null || kopf === '') {
+    return null
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Text bold={liste.length > 0} dimColor={liste.length === 0} wrap="wrap">
+        {kopf}
+      </Text>
+      {liste.slice(0, AENDERUNGEN).map(one => (
+        <Text wrap="wrap">{`– ${one}`}</Text>
+      ))}
+      {liste.length > AENDERUNGEN && (
+        <Text dimColor wrap="wrap">
+          {`… und ${liste.length - AENDERUNGEN} weitere in der Datei des Plans.`}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+// Die Festlegungen als Liste. Was erst lokal liegt, sagt das und lässt sich zurücknehmen;
+// was in GOAL.md steht, streicht nur der Chat.
+const zeichneFestListe = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): RenderElement | null => {
+  const { Box, Text, Button } = teile
+  const { liste } = stand.festlegungen
+
+  if (liste.length === 0) {
+    return null
+  }
+
+  return (
+    <Box flexDirection="column">
+      <Text bold wrap="wrap">
+        {`Festlegungen (${liste.length})`}
+      </Text>
+      {liste.map((eine, i) =>
+        eine.ort === 'goal' ? (
+          <Text wrap="wrap">{`– ${eine.satz}`}</Text>
+        ) : (
+          <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+            <Text wrap="wrap">{`– ${eine.satz} (noch nicht in GOAL.md)`}</Text>
+            <Button key={`fest-weg-${i}`} label="Entfernen" onPress={() => taten.entferneFest(eine.satz)} />
+          </Box>
+        ),
+      )}
+    </Box>
+  )
+}
+
+// Die ganze Leiste: Kopf und Knöpfe, der Stand von GOAL.md, das Feld für eine Festlegung,
+// was der letzte Lauf geändert hat, die Karten, die Detail-Fläche, die Festlegungen und was
+// beim Ableiten aufgefallen ist.
 export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten): RenderElement => {
   const { Box, Text, Button } = teile
   const { stand, laufend, wahl } = lage
   const plan = stand.plan ?? LEERER_PLAN
-  const bild = sicht(plan, laufend, wahl.wahl)
+  const bild = sicht(plan, laufend, wahl.wahl, stand.aenderungen)
   const flaeche =
     stand.plan === null || teile.Svg === null ? null : baueFlaeche(bild, { zellen: lage.zellen, farben: wahl.farben })
   const steht = flaeche?.art === 'neben'
@@ -455,6 +584,8 @@ export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten
 
       {zeichneGoal(teile, stand, taten)}
       {zeichneKopf(teile, lage, taten)}
+      {zeichneFestEingabe(teile, lage, taten)}
+      {zeichneAenderungen(teile, stand)}
 
       {steht ? (
         <Box flexDirection="row" alignItems="flex-start" columnGap={2}>
@@ -486,6 +617,8 @@ export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten
 
       {!steht && (stand.plan !== null || bild.ohneKarte.length > 0) && zurKarte}
 
+      {zeichneFestListe(teile, stand, taten)}
+
       {stand.warnungen.length > 0 && (
         <Box flexDirection="column">
           <Text bold wrap="wrap">
@@ -507,7 +640,7 @@ export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten
       {stand.plan !== null && (
         <Text dimColor wrap="wrap">
           {'Diesen Plan hat ein Modell aus GOAL.md, Doku, Chats und Git-Verlauf abgeleitet. ' +
-            'Festgelegt ist nur, was in GOAL.md steht.' +
+            'Festgelegt ist nur, was in GOAL.md steht und was du als Festlegung eingegeben hast.' +
             (stand.fakten === null || stand.fakten.datei === '' ? '' : ` Der Plan liegt in ${stand.fakten.datei}.`)}
         </Text>
       )}

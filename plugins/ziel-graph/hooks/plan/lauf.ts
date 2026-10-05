@@ -1,23 +1,32 @@
 import type { ModelCompleteResult } from 'claude-code'
 
-import type { ZielGraphFakten, ZielGraphGeladen } from '../../types'
+import type { ZielGraphAenderungen, ZielGraphFakten, ZielGraphGeladen } from '../../types'
 
 import { ordnerVon } from '../chats'
 import type { ChatZugang } from '../chats'
+import { istObjekt } from '../worte'
 
 import { AUFTRAG, baueEingabe, normalisiere, quellenNamen } from './ableiten'
-import type { Ableitung, UmfeldChat } from './ableiten'
+import type { Ableitung, UmfeldChat, Voriger } from './ableiten'
+import { gleicheSaetze, legeFest, liesFestlegungen, nimmFestZurueck } from './festlegungen'
+import type { FestAusgang } from './festlegungen'
 import { istLeer, leseGoal } from './goal'
 import { liesGoal, sammle } from './quellen'
 import type { QuellenZugang } from './quellen'
+import { leseAenderungen, vergleiche } from './vergleich'
 
-// Ein Lauf von Anfang bis Ende: Quellen lesen, das Modell einmal fragen, die Antwort
-// aufräumen und alles als JSON ablegen. Dazu das Laden des letzten Plans. Kein `$`:
+// Ein Lauf von Anfang bis Ende: Quellen, Festlegungen und den vorigen Plan lesen, das Modell
+// einmal fragen, die Antwort aufräumen, mit dem vorigen Plan vergleichen und alles als JSON
+// ablegen. Dazu das Laden des letzten Plans und das Aufnehmen einer Festlegung. Kein `$`:
 // register.tsx reicht einen Zugang.
+
+// Was das Laden braucht: lesen, und schreiben nur, um die lokale Kopie einer Festlegung
+// fallen zu lassen, die inzwischen in GOAL.md steht.
+export type LadeZugang = QuellenZugang & Pick<ChatZugang, 'schreibe'>
 
 // `frage` ist hier der große Aufruf, der den Plan ableitet, nicht der kleine für den Stand
 // eines Chats.
-export type LaufZugang = QuellenZugang & Pick<ChatZugang, 'schreibe' | 'frage'>
+export type LaufZugang = LadeZugang & Pick<ChatZugang, 'frage'>
 
 // Womit das Modell gefragt wird. Steht so in der Datei des Laufs.
 export type Aufruf = { modell: string; maxTokens: number; timeoutMs: number }
@@ -38,9 +47,16 @@ export type Gespeichert = {
   goal: string | null
   // was beim Lesen der Quellen ausgelassen wurde
   hinweise: string[]
+  // die Festlegungen, die das Modell bekommen hat; leer in einer Datei der Version 1
+  festlegungen: string[]
+  // was der Lauf am Plan davor geändert hat; null: Es gab keinen davor, oder die Datei ist
+  // eine der Version 1
+  aenderungen: ZielGraphAenderungen | null
 }
 
-const VERSION = 1
+// Version 2 kennt die Festlegungen und die Änderungen. Eine Datei der Version 1 lädt weiter.
+const VERSION = 2
+const VERSIONEN: readonly unknown[] = [1, VERSION]
 const PLAN = 'plan.json'
 
 // Wo Plan und Läufe dieses Repos liegen: in einem Unterordner des Ordners, in dem direkt
@@ -76,6 +92,29 @@ const goalStand = (jetzt: string | null, beimAbleiten: string | null): ZielGraph
   geaendert: jetzt !== beimAbleiten,
 })
 
+// Der Plan vor einem Lauf: der gespeicherte, aufgeräumt gegen die GOAL.md von jetzt, also
+// so, wie beide Ansichten ihn gerade zeigen. null: Es gibt keinen brauchbaren.
+const liesVorigen = async (
+  zugang: Pick<ChatZugang, 'lies'>,
+  ordner: string,
+  goal: string | null,
+): Promise<Voriger | null> => {
+  let roh: string | null = null
+
+  try {
+    roh = await zugang.lies(`${ordner}/${PLAN}`)
+  } catch {
+    // Noch nie abgeleitet.
+  }
+
+  const gespeichert = leseGespeichert(roh)
+  const ableitung = gespeichert === null ? null : planAus(gespeichert, goal)
+
+  return gespeichert !== null && ableitung?.ok === true
+    ? { plan: ableitung.plan, zeit: gespeichert.fakten.zeit }
+    : null
+}
+
 // Leitet den Plan einmal ab. Der Ausgang sagt, ob es einen Plan gibt; die Datei des Laufs
 // entsteht in beiden Fällen, plan.json nur bei einem gelungenen Lauf. `gilt` sagt am Ende,
 // ob dieser Lauf noch der jüngste ist: Einer, der als verloren galt und sich doch noch
@@ -88,7 +127,14 @@ export const leiteAb = async (
   const beginn = await zugang.jetzt()
   const quellen = await sammle(zugang)
   const goal = leseGoal(quellen.goal)
-  const eingabe = baueEingabe(quellen, goal, new Date(beginn).toISOString().slice(0, 10))
+  const ordner = await planOrdnerVon(zugang)
+  // Die Festlegungen aus GOAL.md und die lokalen, und der Plan, den der Nutzer gerade sieht.
+  const festlegungen = await liesFestlegungen(zugang, ordner, goal.festlegungen)
+  const voriger = await liesVorigen(zugang, ordner, quellen.goal)
+  const eingabe = baueEingabe(quellen, goal, new Date(beginn).toISOString().slice(0, 10), {
+    festlegungen: festlegungen.map(one => one.satz),
+    voriger,
+  })
   const vorModell = await zugang.jetzt()
   let antwort: ModelCompleteResult | null = null
   let fehler = ''
@@ -119,8 +165,10 @@ export const leiteAb = async (
           ...gelesen,
           grund: `${gelesen.grund} Sie endet an der Grenze von ${aufruf.maxTokens} Tokens und ist wohl abgeschnitten.`,
         }
+  // Was sich gegenüber dem vorigen Plan geändert hat. Ob das Modell die Festlegungen
+  // befolgt hat, prüft hier niemand nach: Das sieht der Nutzer am Plan.
+  const aenderungen = ableitung.ok && voriger !== null ? vergleiche(voriger.plan, ableitung.plan) : null
   const ende = await zugang.jetzt()
-  const ordner = await planOrdnerVon(zugang)
   const fakten = {
     zeit: beginn,
     dauerMs: ende - beginn,
@@ -160,11 +208,21 @@ export const leiteAb = async (
         wartet: one.frage !== '',
       })),
       commits: { anzahl: quellen.commits.length, zeichen: quellen.commits.join('\n').length },
+      festlegungen,
+      voriger:
+        voriger === null
+          ? null
+          : {
+              zeit: new Date(voriger.zeit).toISOString(),
+              buendel: voriger.plan.buendel.length,
+              stamm: voriger.plan.stamm.length,
+            },
       hinweise: quellen.hinweise,
     },
     prompt: { systemZeichen: AUFTRAG.length, eingabeZeichen: eingabe.length },
     antwort: roh,
     warnungen,
+    aenderungen,
     plan: ableitung.ok ? ableitung.plan : null,
   }
   let datei = `${ordner}/letzter.json`
@@ -197,6 +255,8 @@ export const leiteAb = async (
       umfeld,
       goal: quellen.goal,
       hinweise: quellen.hinweise,
+      festlegungen: festlegungen.map(one => one.satz),
+      aenderungen,
       // Nur zum Nachlesen: Beim Laden entsteht der Plan neu aus Antwort und GOAL.md.
       warnungen,
       plan: ableitung.plan,
@@ -206,6 +266,10 @@ export const leiteAb = async (
   } catch {
     planDatei = ''
   }
+
+  // Hat der Nutzer während des Laufs eine Festlegung eingegeben, kennt dieser Plan sie noch
+  // nicht: Sie steht schon in der Liste, und die Fläche sagt, dass erst der nächste Lauf sie anwendet.
+  const danach = await liesFestlegungen(zugang, ordner, goal.festlegungen)
 
   return {
     ok: true,
@@ -217,13 +281,18 @@ export const leiteAb = async (
       ],
       fakten: { ...fakten, datei: planDatei },
       goal: goalStand(quellen.goal, quellen.goal),
+      festlegungen: {
+        liste: danach,
+        geaendert: !gleicheSaetze(
+          danach.map(one => one.satz),
+          festlegungen.map(one => one.satz),
+        ),
+      },
+      aenderungen,
       gelesen: ende,
     },
   }
 }
-
-const istObjekt = (wert: unknown): wert is Record<string, unknown> =>
-  typeof wert === 'object' && wert !== null && !Array.isArray(wert)
 
 const zahl = (wert: unknown): number => (typeof wert === 'number' ? wert : 0)
 
@@ -234,7 +303,7 @@ export const leseGespeichert = (roh: string | null): Gespeichert | null => {
   try {
     const wert: unknown = JSON.parse(roh ?? '')
 
-    if (!istObjekt(wert) || wert.version !== VERSION || typeof wert.antwort !== 'string') {
+    if (!istObjekt(wert) || !VERSIONEN.includes(wert.version) || typeof wert.antwort !== 'string') {
       return null
     }
 
@@ -267,6 +336,10 @@ export const leseGespeichert = (roh: string | null): Gespeichert | null => {
       hinweise: (Array.isArray(wert.hinweise) ? wert.hinweise : []).filter(
         (one): one is string => typeof one === 'string',
       ),
+      festlegungen: (Array.isArray(wert.festlegungen) ? wert.festlegungen : []).filter(
+        (one): one is string => typeof one === 'string',
+      ),
+      aenderungen: leseAenderungen(wert.aenderungen),
     }
   } catch {
     return null
@@ -280,11 +353,15 @@ export const planAus = (gespeichert: Gespeichert, goal: string | null): Ableitun
 
 // Lädt den letzten gespeicherten Plan dieses Repos. GOAL.md wird dabei frisch gelesen und
 // geht vor: Ein Ziel, das seit dem Ableiten in GOAL.md steht, zeigen beide Ansichten sofort,
-// ohne neuen Modell-Aufruf. Ohne gespeicherten Plan sagt das Ergebnis nur, wie GOAL.md dasteht.
-export const ladePlan = async (zugang: QuellenZugang): Promise<ZielGraphGeladen> => {
+// ohne neuen Modell-Aufruf. Auch die Festlegungen kommen frisch: aus GOAL.md und aus der
+// lokalen Datei. Ohne gespeicherten Plan sagt das Ergebnis nur, wie GOAL.md dasteht und
+// welche Festlegungen gelten.
+export const ladePlan = async (zugang: LadeZugang): Promise<ZielGraphGeladen> => {
   const gelesen = await zugang.jetzt()
   const jetzt = await liesGoal(zugang)
-  const datei = `${await planOrdnerVon(zugang)}/${PLAN}`
+  const ordner = await planOrdnerVon(zugang)
+  const liste = await liesFestlegungen(zugang, ordner, leseGoal(jetzt).festlegungen)
+  const datei = `${ordner}/${PLAN}`
   let roh: string | null = null
 
   try {
@@ -301,6 +378,8 @@ export const ladePlan = async (zugang: QuellenZugang): Promise<ZielGraphGeladen>
       warnungen: roh === null ? [] : ['Der gespeicherte Plan ist nicht lesbar: „Neu ableiten“ schreibt ihn neu.'],
       fakten: null,
       goal: goalStand(jetzt, jetzt),
+      festlegungen: { liste, geaendert: false },
+      aenderungen: null,
       gelesen,
     }
   }
@@ -315,6 +394,31 @@ export const ladePlan = async (zugang: QuellenZugang): Promise<ZielGraphGeladen>
     // Wo der Plan liegt, sagt der Ort, von dem er gelesen wurde, nicht die Datei selbst.
     fakten: { ...gespeichert.fakten, datei },
     goal: goalStand(jetzt, gespeichert.goal),
+    festlegungen: {
+      liste,
+      geaendert: !gleicheSaetze(
+        liste.map(one => one.satz),
+        gespeichert.festlegungen,
+      ),
+    },
+    aenderungen: ableitung.ok ? gespeichert.aenderungen : null,
     gelesen,
   }
 }
+
+// ---------- Festlegungen aufnehmen und zurücknehmen ----------
+
+// Nimmt einen Satz des Nutzers als Festlegung auf. Er gilt ab dem nächsten Ableiten und
+// liegt erst lokal, im Ordner des Plans: GOAL.md schreibt der Mod nie.
+export const legeFestlegung = async (zugang: LadeZugang, satz: string): Promise<FestAusgang> =>
+  legeFest(
+    zugang,
+    await planOrdnerVon(zugang),
+    leseGoal(await liesGoal(zugang)).festlegungen,
+    satz,
+    await zugang.jetzt(),
+  )
+
+// Nimmt eine Festlegung zurück, die erst lokal liegt.
+export const entferneFestlegung = async (zugang: LadeZugang, satz: string): Promise<void> =>
+  nimmFestZurueck(zugang, await planOrdnerVon(zugang), leseGoal(await liesGoal(zugang)).festlegungen, satz)

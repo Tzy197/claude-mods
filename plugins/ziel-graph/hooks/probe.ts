@@ -1,4 +1,10 @@
-import type { ZielGraphAnsicht, ZielGraphChats, ZielGraphFarben, ZielGraphPlan } from '../types'
+import type {
+  ZielGraphAenderungen,
+  ZielGraphAnsicht,
+  ZielGraphChats,
+  ZielGraphFarben,
+  ZielGraphPlan,
+} from '../types'
 
 import type { GraphDaten } from './graph/daten'
 import { fasseErledigtes } from './graph/ruhig'
@@ -37,6 +43,8 @@ export type ProbePlan = {
   chats: ZielGraphChats
   // was beim Aufräumen aufgefallen ist
   warnungen: string[]
+  // was der Lauf am Plan davor geändert hat, so wie es in der Plan-Datei steht; null ohne
+  aenderungen: ZielGraphAenderungen | null
 }
 
 // Der Plan aus dem Text einer Plan-Datei, so wie ihn beide Ansichten nach „Neu laden“
@@ -69,6 +77,7 @@ export const lesePlan = (json: string, wahl: ProbeWahl = {}): ProbePlan | null =
           gelesen: 0,
         },
         warnungen: ableitung.warnungen,
+        aenderungen: gespeichert.aenderungen,
       }
     : null
 }
@@ -98,7 +107,7 @@ export const zeichneGraph = (json: string, wahl: GraphWunsch = {}): GraphProbe |
     return null
   }
 
-  const daten = fasseErledigtes(graphDaten(gelesen.plan, gelesen.chats))
+  const daten = fasseErledigtes(graphDaten(gelesen.plan, gelesen.chats, gelesen.aenderungen))
   const farben = wahl.farben ?? 'auto'
   const bild = sicht(daten, {
     ansicht: wahl.ansicht ?? 'schritte',
@@ -132,7 +141,7 @@ export const zeichneKarten = (json: string, wahl: KartenWunsch = {}): KartenBild
   }
 
   const farben = wahl.farben ?? 'hell'
-  const flaeche = baueFlaeche(kartenSicht(gelesen.plan, gelesen.chats, wahl.karte ?? ''), {
+  const flaeche = baueFlaeche(kartenSicht(gelesen.plan, gelesen.chats, wahl.karte ?? '', gelesen.aenderungen), {
     zellen: wahl.zellen ?? wunschZellen(gelesen.plan.straenge.length),
     farben,
   })

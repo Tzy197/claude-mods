@@ -1,4 +1,5 @@
 import type {
+  ZielGraphAenderungen,
   ZielGraphBuendel,
   ZielGraphChats,
   ZielGraphPlan,
@@ -9,7 +10,7 @@ import type {
 import { nameVon } from '../chats'
 import { ENDZIEL } from '../fest'
 import { QUELLE_CHATS, QUELLE_COMMITS, ZONEN_FOLGE } from '../plan/ableiten'
-import { endzielZeile, laufende, zielTitel } from '../plan/lesen'
+import { aenderungsMarke, endzielZeile, laufende, mitMarke, schrittMeta, zielTitel } from '../plan/lesen'
 import { eindeutig, mehrzahl, sauber } from '../worte'
 
 import { STAMM } from './daten'
@@ -39,8 +40,14 @@ const mitVermutung = (meta: string, vermutet: boolean): string =>
     : meta
 
 // Die Zeile eines Bündels. Ob ein Chat an ihm arbeitet und ob er wartet, sagen die Chats,
-// die gerade laufen: Zugeordnet hat sie das Modell beim Ableiten.
-const zeileAus = (plan: ZielGraphPlan, eines: ZielGraphBuendel, chats: ZielGraphChats): GraphZeile => {
+// die gerade laufen: Zugeordnet hat sie das Modell beim Ableiten. Hat der letzte Lauf das
+// Bündel neu gebracht, verschoben oder umbenannt, steht das vorn in seiner zweiten Zeile.
+const zeileAus = (
+  plan: ZielGraphPlan,
+  eines: ZielGraphBuendel,
+  chats: ZielGraphChats,
+  aenderungen: ZielGraphAenderungen | null,
+): GraphZeile => {
   const offene = laufende(eines, chats)
   const ziel = zielTitel(plan, eines.wartetAuf)
   // Worauf ein Bündel wartet, steht als Text in seiner zweiten Zeile: Eine Linie zeichnet
@@ -61,7 +68,7 @@ const zeileAus = (plan: ZielGraphPlan, eines: ZielGraphBuendel, chats: ZielGraph
     art: offene.length > 0 ? 'laeuft' : eines.stand,
     bahn: eines.strang,
     titel: eines.titel,
-    meta,
+    meta: mitMarke(meta, aenderungsMarke(aenderungen, 'buendel', eines.id)),
     zone: eines.zone,
     ...(offene.length === 0
       ? {}
@@ -78,6 +85,7 @@ const stammZeile = (
   schritt: ZielGraphSchritt,
   istMuendung: boolean,
   mitUnterzeilen: boolean,
+  aenderungen: ZielGraphAenderungen | null,
 ): GraphZeile => {
   const dabei = plan.straenge.filter(one => one.gehoertZu === schritt.id).map(one => one.name)
   const unterzeilen = [
@@ -90,7 +98,12 @@ const stammZeile = (
     art: schritt.erreicht ? 'erledigt' : istMuendung ? 'treffpunkt' : 'stamm',
     bahn: STAMM,
     titel: schritt.titel,
-    meta: [schritt.erreicht ? 'erreicht' : '', mitVermutung(schritt.meta, schritt.vermutet)]
+    // Ein abgehaktes Zwischenziel sagt „erreicht“ genau einmal, was auch immer das Modell dazu schreibt.
+    meta: [
+      aenderungsMarke(aenderungen, 'schritt', schritt.id),
+      schritt.erreicht ? 'erreicht' : '',
+      mitVermutung(schrittMeta(schritt), schritt.vermutet),
+    ]
       .filter(one => one !== '')
       .join(' · '),
     ...(unterzeilen.length === 0 || !mitUnterzeilen ? {} : { tickets: unterzeilen }),
@@ -137,8 +150,13 @@ const strangZeile = (
   }
 }
 
-// Macht aus dem Plan, was der Graph zeichnet. `chats` sind die Chats, die gerade laufen.
-export const graphDaten = (plan: ZielGraphPlan, chats: ZielGraphChats): GraphDaten => {
+// Macht aus dem Plan, was der Graph zeichnet. `chats` sind die Chats, die gerade laufen,
+// `aenderungen`, was der letzte Lauf geändert hat.
+export const graphDaten = (
+  plan: ZielGraphPlan,
+  chats: ZielGraphChats,
+  aenderungen: ZielGraphAenderungen | null = null,
+): GraphDaten => {
   // Erst die Ziele, dann die Dauerläufer: So sitzt der Stamm in der Mitte der Ziele. Die
   // Farbe hängt am Strang, nicht an seinem Platz.
   const straenge = [
@@ -162,7 +180,7 @@ export const graphDaten = (plan: ZielGraphPlan, chats: ZielGraphChats): GraphDat
     .map((eines, i) => ({ eines, i }))
     .sort((a, b) => platz(a.eines) - platz(b.eines) || a.i - b.i)
     .map(one => one.eines)
-  const zeilen = buendel.map(eines => zeileAus(plan, eines, chats))
+  const zeilen = buendel.map(eines => zeileAus(plan, eines, chats, aenderungen))
   // Die Bahnen der Ziele münden in das erste Zwischenziel, das noch offen ist, oder in den
   // Treffpunkt des Modells. Gibt es keines von beiden, münden sie ins Endziel.
   const muendung = plan.stamm.find(one => !one.erreicht && one.art !== 'schritt')
@@ -174,7 +192,11 @@ export const graphDaten = (plan: ZielGraphPlan, chats: ZielGraphChats): GraphDat
     endziel,
     personen: [{ id: PERSON, name: 'Ich' }],
     bahnen,
-    schritte: [...zeilen, ...plan.stamm.map(one => stammZeile(plan, one, one === muendung, true)), amEnde],
+    schritte: [
+      ...zeilen,
+      ...plan.stamm.map(one => stammZeile(plan, one, one === muendung, true, aenderungen)),
+      amEnde,
+    ],
     // In der Übersicht klappt nichts auf.
     uebersicht: [
       ...straenge.map(strang =>
@@ -187,7 +209,7 @@ export const graphDaten = (plan: ZielGraphPlan, chats: ZielGraphChats): GraphDat
           vergeben,
         ),
       ),
-      ...plan.stamm.map(one => stammZeile(plan, one, one === muendung, false)),
+      ...plan.stamm.map(one => stammZeile(plan, one, one === muendung, false, aenderungen)),
       amEnde,
     ],
   }

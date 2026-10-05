@@ -1,7 +1,10 @@
 import { expect, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { GOAL, antwort, gelungen } from './shop'
+import { graphDaten } from '../hooks/graph/zeilen'
+import { detail, sicht } from '../hooks/karten/karten'
+
+import { GOAL, KEINE, STAMM_MIT_GOAL, antwort, gelungen } from './shop'
 import {
   BREIT,
   CHATS,
@@ -294,4 +297,62 @@ test('eine Session, die nur /orchestrator öffnet, zeichnet die schmale Ansicht 
   expect(zustand.get('karten')).toEqual({ wahl: 'warenkorb', farben: 'hell' })
 
   await ui.unmount()
+})
+
+test('ein erreichtes Zwischenziel sagt in beiden Ansichten genau einmal „erreicht“, was auch immer das Modell dazu schreibt', () => {
+  const mit = (id: string, meta: string) =>
+    gelungen(antwort({ stamm: STAMM_MIT_GOAL.map(one => (one.id === id ? { ...one, meta } : one)) })).plan
+
+  for (const [meta, erwartet] of [
+    ['', 'erreicht'],
+    // So kam es in einem echten Lauf zurück: Vorher stand „erreicht · erreicht“ da.
+    ['erreicht', 'erreicht'],
+    ['Erreicht.', 'erreicht'],
+    ['bereits erreicht', 'erreicht'],
+    ['seit September', 'erreicht · seit September'],
+  ] as const) {
+    const plan = mit('grundstock-steht', meta)
+    const daten = graphDaten(plan, KEINE)
+
+    expect(sicht(plan, KEINE, '').stamm[0]?.meta).toBe(erwartet)
+    expect(daten.schritte.find(one => one.id === 'grundstock-steht')?.meta).toBe(erwartet)
+    expect(daten.uebersicht.find(one => one.id === 'grundstock-steht')?.meta).toBe(erwartet)
+    // Die Detail-Fläche sagt es ohnehin in einem eigenen Satz.
+    expect(detail(plan, KEINE, 'grundstock-steht')?.zeilen[0]).toEqual({ art: 'leise', text: 'In GOAL.md als erreicht abgehakt.' })
+  }
+
+  // Ein offenes Zwischenziel behält seine Zeile, auch wenn sie das Wort nennt.
+  const offen = mit('grosser-umbau', 'erreicht, sobald Katalog und Kasse fertig sind')
+
+  expect(sicht(offen, KEINE, '').stamm[1]?.meta).toBe('erreicht, sobald Katalog und Kasse fertig sind')
+  expect(graphDaten(offen, KEINE).schritte.find(one => one.id === 'grosser-umbau')?.meta).toBe('erreicht, sobald Katalog und Kasse fertig sind')
+})
+
+test('ein Zustand aus einer älteren Fassung des Mods zeichnet trotzdem: Was ihm fehlt, füllen die Anfangswerte', async ($, on) => {
+  // So lag der Plan bis Version 0.3.0 im Zustand der Session, der ein Neuladen des Mod-Codes
+  // übersteht: ohne Festlegungen und ohne Änderungen.
+  const alt = {
+    plan: gelungen(antwort()).plan,
+    warnungen: [],
+    fakten: null,
+    goal: { vorhanden: true, leer: false, geaendert: false },
+    gelesen: JETZT,
+  }
+
+  on('state.get', (_$, e, next) => (e.key === 'geladen' ? { value: { value: alt, version: 1 } } : next(e)))
+  baue(on)
+
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const graph = await $.ui.mount({ ...GRAPH, surface })
+    const karten = await $.ui.mount({ ...BREIT, surface })
+
+    expect(await mitBildern(graph)).toContain('Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an.')
+    expect(await mitBildern(graph)).not.toContain('Seit dem letzten Ableiten')
+    expect(await inhalt(karten)).toContain('Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an.')
+    expect(await inhalt(karten)).toContain('Keine Festlegungen')
+    expect(await karten.findAll({ type: 'Input', key: 'fest-eingabe' })).toHaveLength(1)
+
+    await graph.unmount()
+    await karten.unmount()
+  }
 })

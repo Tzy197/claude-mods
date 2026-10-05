@@ -10,7 +10,16 @@ import type {
 
 import { alter, nameVon, zaehler } from '../chats'
 import { MODELL } from '../fest'
-import { endzielAuftrag, faktenZeile, goalAuftrag, laufZeile, ohneZiel, strangAuftrag } from '../plan/lesen'
+import {
+  aenderungsZeile,
+  endzielAuftrag,
+  faktenZeile,
+  festZeile,
+  goalAuftrag,
+  laufZeile,
+  ohneZiel,
+  strangAuftrag,
+} from '../plan/lesen'
 import type { Taten, Teile } from '../teile'
 import { mehrzahl } from '../worte'
 
@@ -289,7 +298,9 @@ const zeichneGraph = (teile: Teile, lage: GraphLage, plan: ZielGraphPlan, taten:
   }
   // „Ruhig“: Bild und Liste zeigen, was hinter uns liegt, je Bahn in einer Zeile. Der Plan
   // behält jedes Bündel für sich; so zeigt ihn auch die breite Ansicht.
-  const daten = fasseErledigtes(graphDaten(plan, laufend))
+  const daten = fasseErledigtes(graphDaten(plan, laufend, stand.aenderungen))
+  // Was der letzte Lauf geändert hat, in einer Zeile; die Liste dazu hat die breite Ansicht.
+  const seither = aenderungsZeile(stand.aenderungen)
   const bild = sicht(daten, einstellung)
   const streifen = Svg === null ? null : schneide(zeichneSvg(daten, bild, einstellung.farben), bild)
   // Jeder Streifen trägt das ganze Bild. Eines über der Grenze der Engine wird nicht
@@ -312,6 +323,11 @@ const zeichneGraph = (teile: Teile, lage: GraphLage, plan: ZielGraphPlan, taten:
         <Text dimColor wrap="wrap">
           {bild.zaehler}
         </Text>
+        {seither !== '' && (
+          <Text dimColor wrap="wrap">
+            {seither}
+          </Text>
+        )}
       </Box>
 
       <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
@@ -351,7 +367,7 @@ const zeichneGraph = (teile: Teile, lage: GraphLage, plan: ZielGraphPlan, taten:
 }
 
 // Der untere Teil der Leiste: wo der Lauf steht, der Knopf zum Ableiten, wie GOAL.md
-// dasteht und der Plan als Graph.
+// dasteht, wie viele Festlegungen gelten und der Plan als Graph.
 const zeichnePlan = (teile: Teile, lage: GraphLage, taten: Taten): RenderElement => {
   const { Box, Text, Button } = teile
   const { stand, jetzt } = lage
@@ -394,6 +410,12 @@ const zeichnePlan = (teile: Teile, lage: GraphLage, taten: Taten): RenderElement
       </Box>
 
       {zeichneHinweise(teile, stand, taten)}
+
+      {stand.festlegungen.liste.length > 0 && (
+        <Text dimColor wrap="wrap">
+          {`${festZeile(stand.festlegungen.liste)}. Sie stehen in der Ansicht /orchestrator.`}
+        </Text>
+      )}
 
       {plan !== null && zeichneGraph(teile, lage, plan, taten)}
     </Box>

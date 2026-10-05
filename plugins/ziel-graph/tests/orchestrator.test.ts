@@ -163,7 +163,7 @@ for (const surface of SURFACES) {
     expect(text).toContain('[Chat wartet auf dich]')
     expect(text).toContain('kein Ziel festgelegt')
     expect(text).toContain('Großer Umbau')
-    expect(text).toContain('Festgelegt ist nur, was in GOAL.md steht.')
+    expect(text).toContain('Festgelegt ist nur, was in GOAL.md steht und was du als Festlegung eingegeben hast.')
     expect(text).toContain(`Der Plan liegt in ${ORDNER}/plan.json.`)
     // Eine Antwort nach Vorschrift braucht keinen Hinweis.
     expect(text).not.toContain('Beim Ableiten aufgefallen')
@@ -204,11 +204,14 @@ for (const surface of SURFACES) {
     const plan = gespeichert(welt, `${ORDNER}/plan.json`)
 
     expect(plan).toMatchObject({
-      version: 1,
+      version: 2,
       fakten: { zeit: JETZT, dauerMs: 23_000, modellMs: 23_000, dateien: 5, chats: 1, commits: 30, modell: 'claude-sonnet-5-5', datei: `${ORDNER}/plan.json` },
       antwort: antwort(),
       umfeld: { chats: [CHAT], quellen: QUELLEN },
       goal: GOAL,
+      // Der erste Lauf: keine Festlegung, und kein Plan davor, mit dem sich vergleichen ließe.
+      festlegungen: [],
+      aenderungen: null,
       warnungen: [],
     })
     expect(plan.plan).toEqual(gelungen(antwort()).plan)

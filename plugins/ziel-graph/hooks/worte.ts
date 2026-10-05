@@ -3,6 +3,9 @@
 export const text = (wert: unknown): string =>
   typeof wert === 'string' ? wert : typeof wert === 'number' ? String(wert) : ''
 
+export const istObjekt = (wert: unknown): wert is Record<string, unknown> =>
+  typeof wert === 'object' && wert !== null && !Array.isArray(wert)
+
 // Ein Text für ein Bild: Steuerzeichen machen ein SVG ungültig, Zeilenumbrüche zeichnet es
 // nicht. Beides wird zu einem Leerzeichen, zu lange Texte enden in „…“.
 export const sauber = (wert: unknown, laenge: number): string => {

@@ -66,6 +66,12 @@ Vorschlag vom 2026-10-05, die Reihenfolge ist noch nicht entschieden. Er ersetzt
 | 8 | Dauerläufer ein- und ausklappen, Zuständigkeit je Bahn | Entscheidungen 6 bis 8 und 14 der Spezifikation, noch nicht gebaut | mittel |
 | 9 | Aufräumen: den Versuch nach dem Übernehmen löschen, `UEBERGABE.md` ablösen | Beides ist dann überholt | klein |
 
+### Stand des Durchbaus
+
+- **Punkt 1 und 2, gebaut am 2026-10-05 (Version 0.3.0).** Ein Mod, ein Plan, zwei Ansichten, siehe „Entschieden“. `validate`, 127 Tests und die Typprüfung grün. Geprüft mit zwei echten Antworten von Sonnet 5.5 für dieses Repo, außerhalb der App durch den Code des Mods geschickt: gültiges JSON, keine Reparatur. Mit einer Probe-`GOAL.md` hat das Modell die drei Stränge und das Endziel wörtlich übernommen, die Zwischenziele auf den Stamm gesetzt und den Strang ohne Ziel als solchen stehen lassen. In der App noch nicht angesehen.
+- **Punkt 4, gebaut am 2026-10-05 (Version 0.4.0).** Festlegungen (Abschnitt `## Festlegungen` in `GOAL.md`, neue zuerst lokal unter `plan/festlegungen.json`, Eingabe in `/orchestrator`), der vorige Plan als Eingabe, und nach jedem Ableiten die Liste der Änderungen. `validate`, 149 Tests und die Typprüfung grün. Geprüft mit zwei weiteren echten Läufen: Beim Fortschreiben blieben alle 13 Bündel mit id und Titel Zeichen für Zeichen stehen; geändert hat sich nur, was sich in den Quellen geändert hatte (drei Bündel). Zwei Festlegungen („… gehört zum Strang Orchestrator“, „… kommt erst nach …“) wurden genau befolgt, sonst änderte sich nichts. Damit ist der Befund „jeder Lauf ein anderes Bild“ behoben. Die Grenzen für die Doku sind auf 24 000 Zeichen je Datei und 96 000 insgesamt gestiegen, weil `docs/offen.md` dieses Repos schon abgeschnitten wurde.
+- Nicht gebaut: eigene „Vorschläge“ des Modells mit Ja oder Nein (Entscheidungen 1, 7 und 16 der Spezifikation). Was das Modell außerhalb von `GOAL.md` findet, markiert der Mod und bietet den Knopf zum Festlegen an.
+
 Kein Bau, aber offen: Test 4 am zweiten Rechner (zeichnet ein zugeschaltetes Gerät die Leiste?) und Test 5 in einem Repo mit Tracker.
 
 ## Noch zu testen

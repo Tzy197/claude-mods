@@ -25,6 +25,7 @@ test('GOAL.md, vollständig: Endziel, Zwischenziele und Stränge stehen wörtlic
       { id: 'suche', name: 'Suche', ziel: 'Jedes Produkt in zwei Klicks finden', gehoertZu: '', gehoertZuText: '' },
       { id: 'betrieb', name: 'Betrieb', ziel: '', gehoertZu: '', gehoertZuText: '' },
     ],
+    festlegungen: [],
     hinweise: [],
   })
   expect(istLeer(goal)).toBe(false)
@@ -32,7 +33,7 @@ test('GOAL.md, vollständig: Endziel, Zwischenziele und Stränge stehen wörtlic
   expect(leseGoal(`\ufeff${GOAL.replace(/\n/g, '\r\n')}`)).toEqual(goal)
   // Das Format, das der Chat beim Anlegen bekommt, liest der Mod selbst ohne Hinweis.
   // Das Format selbst, mit seinen Platzhaltern, legt nichts fest: Es liest sich wie eine leere Datei.
-  expect(leseGoal(GOAL_FORMAT)).toEqual({ vorhanden: true, endziel: '', zwischenziele: [], straenge: [], hinweise: [] })
+  expect(leseGoal(GOAL_FORMAT)).toEqual({ vorhanden: true, endziel: '', zwischenziele: [], straenge: [], festlegungen: [], hinweise: [] })
 })
 
 test('GOAL.md, nur zum Teil: Was fehlt oder „noch offen“ ist, bleibt leer', () => {
@@ -64,13 +65,13 @@ test('GOAL.md, leer oder fehlend: Die leere Datei ist da, legt aber nichts fest'
   for (const leer of ['', '  \n\n', '# Ziel\n', '# Ziel\n\n## Endziel\n\n## Zwischenziele\n\n## Stränge\n', '<!-- kommt noch -->']) {
     const goal = leseGoal(leer)
 
-    expect(goal).toEqual({ vorhanden: true, endziel: '', zwischenziele: [], straenge: [], hinweise: [] })
+    expect(goal).toEqual({ vorhanden: true, endziel: '', zwischenziele: [], straenge: [], festlegungen: [], hinweise: [] })
     expect(istLeer(goal)).toBe(true)
   }
 
   const fehlt = leseGoal(null)
 
-  expect(fehlt).toEqual({ vorhanden: false, endziel: '', zwischenziele: [], straenge: [], hinweise: [] })
+  expect(fehlt).toEqual({ vorhanden: false, endziel: '', zwischenziele: [], straenge: [], festlegungen: [], hinweise: [] })
   expect(istLeer(fehlt)).toBe(false)
 })
 

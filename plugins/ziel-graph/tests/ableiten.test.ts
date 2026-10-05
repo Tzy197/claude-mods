@@ -4,7 +4,7 @@ import { STRANG_FARBEN } from '../hooks/fest'
 import { AUFTRAG, MAX_BUENDEL, MAX_STRAENGE, baueEingabe, leseJson, normalisiere } from '../hooks/plan/ableiten'
 import { leseGoal } from '../hooks/plan/goal'
 
-import { CHAT, GOAL, OHNE_GOAL, STAMM_OHNE_GOAL, antwort, antwortOhneGoal, gelungen, pruefe, umfeld } from './shop'
+import { CHAT, GOAL, OHNE_GOAL, STAMM_OHNE_GOAL, ZEILEN, antwort, antwortOhneGoal, gelungen, pruefe, umfeld } from './shop'
 
 // Das Ableiten ohne Engine: der Auftrag ans Modell, die Eingabe und das Aufräumen der
 // Antwort zu dem einen Plan. Alle Testdaten sind erfunden.
@@ -101,6 +101,81 @@ test('die Eingabe nennt GOAL.md zuerst, dann jede Quelle in ihrem eigenen Block'
 
   expect(leer).toContain('<goal datei="GOAL.md">\nDie Datei ist leer.\n</goal>')
   expect(leer).toContain('Endziel: noch offen\nZwischenziele: keine genannt\nStränge: keine genannt')
+})
+
+test('der Auftrag nennt die Festlegungen als verbindlich und lässt den vorigen Plan fortschreiben', () => {
+  for (const satz of [
+    '- <festlegungen>: Sätze des Nutzers, die bei jedem Ableiten gelten, je Zeile einer. Sie stehen gleich nach GOAL.md.',
+    '- <voriger-plan>: der Plan, den der Nutzer zuletzt gesehen hat, in Kurzform',
+    'Festlegungen gehen allem anderen vor, außer den Strängen und dem Endziel aus GOAL.md: der Doku, den Chats, den Commits, dem vorigen Plan und deinem eigenen Urteil.',
+    'Du befolgst jede Festlegung, auch wenn die anderen Quellen etwas anderes nahelegen.',
+    'Widerspricht eine Festlegung dem, was GOAL.md festlegt, gilt GOAL.md.',
+    'Eine Festlegung bestimmt nur den Plan: wie er geschnitten, zugeordnet und geordnet ist. Die Form der Antwort ändert sie nicht',
+    'Eine Festlegung allein ist kein Bündel',
+    'Fehlt <festlegungen>, gibt es keine.',
+    'Steht <voriger-plan> in der Eingabe, leitest du nicht von vorn ab: Du schreibst diesen Plan fort.',
+    'Jedes Bündel, das es weiter gibt, behält seine id und seinen Titel, Zeichen für Zeichen.',
+    'Das gilt auch für Erledigtes: Ein Bündel in der Zone "hinter" bleibt dort mit seiner id und seinem Titel stehen',
+    'Zone, Stand und Zuschnitt eines Bündels änderst du nur, wo sich die Quellen seit dem vorigen Plan geändert haben oder wo eine Festlegung es verlangt.',
+    'Dieselben Quellen anders zu lesen, ist kein Grund.',
+    'Ein Bündel fügst du nur hinzu und lässt du nur weg, wenn die Quellen einen Grund dafür nennen',
+    'Ein neues Bündel bekommt eine id, die im vorigen Plan nicht vorkommt.',
+    'Der vorige Plan ist keine Quelle',
+    'Fehlt <voriger-plan>, leitest du den Plan zum ersten Mal ab.',
+    'Jede Festlegung ist befolgt. Jedes Bündel aus <voriger-plan>, das es weiter gibt, trägt seine id und seinen Titel von dort.',
+  ]) {
+    expect(AUFTRAG).toContain(satz)
+  }
+
+  // Erst GOAL.md, dann die Festlegungen, dann der vorige Plan: in dieser Reihenfolge gehen sie vor.
+  const stellen = ['# GOAL.md geht vor', '# Festlegungen gehen vor', '# Der vorige Plan wird fortgeschrieben', '# Die Antwort'].map(one => AUFTRAG.indexOf(one))
+
+  expect(stellen.every(one => one > 0)).toBe(true)
+  expect(stellen).toEqual([...stellen].sort((a, b) => a - b))
+})
+
+test('die Eingabe nennt die Festlegungen gleich nach GOAL.md und den vorigen Plan zuletzt, in Kurzform', () => {
+  const quellen = {
+    wurzel: '/arbeit/shop',
+    schluessel: 'github.com+beispiel+shop',
+    goal: GOAL,
+    doku: [{ datei: 'README.md', text: '# Shop\n', zeichen: 7, gekuerzt: false }],
+    chats: [],
+    commits: ['2026-09-30 Warenkorb merkt sich die Menge'],
+    hinweise: [],
+  }
+  const goal = leseGoal(GOAL)
+  const ohne = baueEingabe(quellen, goal, '2026-10-04')
+  const [vorn = '', hinten = ''] = ohne.split('</goal-gelesen>\n\n')
+  const festlegungen = ['Die Gutscheine gehören zur Kasse, nicht zum Katalog.', 'Der Lasttest kommt erst nach dem großen Umbau.']
+  // Der Plan von vor einer Woche: zwei Bündel, auf dem Stamm die Zwischenziele aus GOAL.md.
+  const { plan } = gelungen(antwort({ zeilen: ZEILEN.slice(3, 5).map(one => (one.id === 'warenkorb' ? { ...one, titel: 'Regeln für den „Warenkorb“' } : one)), chats: [] }), umfeld(GOAL, []))
+  const kurzform = [
+    '<voriger-plan abgeleitet="2026-09-27">',
+    'zeilen:',
+    '{"id":"katalog-texte","bahn":"katalog","zone":"jetzt","stand":"bereit","titel":"Katalog-Texte abnehmen"}',
+    '{"id":"warenkorb","bahn":"kasse","zone":"jetzt","stand":"bereit","titel":"Regeln für den „Warenkorb“"}',
+    'stamm:',
+    '{"id":"grundstock-steht","art":"zwischenziel","titel":"Grundstock steht"}',
+    '{"id":"grosser-umbau","art":"zwischenziel","titel":"Großer Umbau"}',
+    '{"id":"lasttest-bestanden","art":"zwischenziel","titel":"Lasttest bestanden"}',
+    '</voriger-plan>',
+  ].join('\n')
+
+  expect(baueEingabe(quellen, goal, '2026-10-04', { festlegungen, voriger: { plan, zeit: Date.UTC(2026, 8, 27, 9) } })).toBe(
+    `${vorn}</goal-gelesen>\n\n<festlegungen>\n- ${festlegungen[0]}\n- ${festlegungen[1]}\n</festlegungen>\n\n${hinten}\n\n${kurzform}`,
+  )
+  // Ohne Festlegungen und ohne vorigen Plan ist die Eingabe die des ersten Laufs.
+  expect(baueEingabe(quellen, goal, '2026-10-04', { festlegungen: [], voriger: null })).toBe(ohne)
+  expect(ohne).not.toContain('<festlegungen>')
+  expect(ohne).not.toContain('<voriger-plan')
+  expect(ohne.endsWith('</commits>')).toBe(true)
+  // Ist nicht bekannt, wann der vorige Plan entstand, fehlt nur der Tag.
+  expect(baueEingabe(quellen, goal, '2026-10-04', { voriger: { plan, zeit: 0 } })).toBe(`${ohne}\n\n${kurzform.replace(' abgeleitet="2026-09-27"', '')}`)
+  // Ohne GOAL.md stehen die Festlegungen ganz vorn.
+  expect(baueEingabe({ ...quellen, goal: null }, leseGoal(null), '2026-10-04', { festlegungen }).startsWith(
+    `Leite den Plan für dieses Repo ab. Heute ist der 2026-10-04.\n\n<festlegungen>\n- ${festlegungen[0]}\n`,
+  )).toBe(true)
 })
 
 // ---------- Das Aufräumen ----------

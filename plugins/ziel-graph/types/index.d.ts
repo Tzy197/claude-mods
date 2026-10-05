@@ -97,6 +97,47 @@ export type ZielGraphPlan = {
   chats: ZielGraphZuordnung[]
 }
 
+// ---------- Festlegungen und was sich geändert hat ----------
+
+// Eine Festlegung: ein Satz des Nutzers, der bei jedem Ableiten gewinnt.
+export type ZielGraphFestlegung = {
+  satz: string
+  // 'goal': steht in GOAL.md unter „Festlegungen“. 'lokal': liegt erst auf diesem Rechner,
+  // im Ordner des Plans, und noch nicht in GOAL.md.
+  ort: 'goal' | 'lokal'
+}
+
+// Wie ein Bündel oder ein Schritt des Stamms in einem Plan dasteht, so weit der Vergleich
+// zweier Pläne es braucht.
+export type ZielGraphLage = {
+  titel: string
+  // der Name des Strangs; '' auf dem Stamm
+  strang: string
+  // die Zone eines Bündels; 'stamm' für einen Schritt des Stamms
+  zone: ZielGraphZone | 'stamm'
+  // der Stand eines Bündels; auf dem Stamm 'erreicht' oder 'offen'
+  stand: ZielGraphStand | 'erreicht' | 'offen'
+}
+
+// Ein Bündel oder ein Schritt des Stamms, der nach einem Lauf neu, weg oder anders ist.
+export type ZielGraphAenderung = {
+  was: 'buendel' | 'schritt'
+  // die id im neuen Plan; ist der Eintrag weg, die im vorigen
+  id: string
+  // wie er im vorigen Plan dastand; null: Er ist neu
+  vorher: ZielGraphLage | null
+  // wie er im neuen Plan dasteht; null: Er ist weg
+  nachher: ZielGraphLage | null
+}
+
+// Was ein Lauf am Plan davor geändert hat, verglichen nach der id.
+export type ZielGraphAenderungen = {
+  // in der Reihenfolge des neuen Plans: erst die Bündel, dann der Stamm; was weg ist, zuletzt
+  eintraege: ZielGraphAenderung[]
+  // der Wortlaut des Endziels vorher und jetzt, '' für „nicht festgelegt“; null: Es blieb gleich
+  endziel: { vorher: string; nachher: string } | null
+}
+
 // Die Eckdaten eines Laufs.
 export type ZielGraphFakten = {
   // wann der Lauf begonnen hat, in Millisekunden
@@ -125,6 +166,14 @@ export type ZielGraphGeladen = {
     // true: GOAL.md sieht anders aus als beim letzten Ableiten
     geaendert: boolean
   }
+  festlegungen: {
+    // die Festlegungen, die beim nächsten Ableiten gelten: erst die aus GOAL.md, dann die lokalen
+    liste: ZielGraphFestlegung[]
+    // true: Es sind andere Sätze als die, die das Modell beim letzten Ableiten bekommen hat
+    geaendert: boolean
+  }
+  // was der letzte Lauf am Plan davor geändert hat; null: Es gab keinen Plan davor
+  aenderungen: ZielGraphAenderungen | null
   // wann zuletzt von der Platte gelesen wurde, in Millisekunden; 0: noch nie
   gelesen: number
 }

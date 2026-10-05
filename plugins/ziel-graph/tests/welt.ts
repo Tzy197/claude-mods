@@ -66,6 +66,8 @@ export type Vorgabe = {
   entwurf: string
   // was `$.session.send` antwortet
   zustellung: SessionSendResult
+  // true: Der Rechner lässt keine Datei schreiben
+  istNurLesbar: boolean
 }
 
 export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
@@ -83,6 +85,7 @@ export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
     platz: { isPlaced: true } as UiOpenResult,
     entwurf: '',
     zustellung: { isDelivered: true } as SessionSendResult,
+    istNurLesbar: false,
     ...vorgabe,
     uhr,
     dateien: new Map<string, string>(),
@@ -133,6 +136,10 @@ export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
     return text === undefined ? { deny: `ENOENT: ${e.path}` } : { value: text }
   })
   on('fs.write', (_$, e) => {
+    if (welt.istNurLesbar) {
+      return { deny: `EROFS: ${e.path}` }
+    }
+
     welt.dateien.set(e.path, e.text)
     welt.geschrieben.set(e.path, uhr.now())
 

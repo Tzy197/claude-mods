@@ -18,6 +18,8 @@ export const NICHTS_GELADEN: ZielGraphGeladen = {
   warnungen: [],
   fakten: null,
   goal: { vorhanden: true, leer: false, geaendert: false },
+  festlegungen: { liste: [], geaendert: false },
+  aenderungen: null,
   gelesen: 0,
 }
 

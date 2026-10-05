@@ -50,8 +50,10 @@ export type Quellen = {
 }
 
 export const GOAL_DATEI = 'GOAL.md'
-export const DOKU_GRENZE = 12_000
-export const GESAMT_GRENZE = 60_000
+// So viele Zeichen gehen höchstens ans Modell: je Datei und für die Doku zusammen. Eine
+// gewöhnliche Doku-Datei von 17.000 Zeichen soll ganz hineinpassen.
+export const DOKU_GRENZE = 24_000
+export const GESAMT_GRENZE = 96_000
 export const COMMITS = 30
 const DOKU_DATEIEN = 40
 const DOKU_TIEFE = 4

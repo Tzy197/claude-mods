@@ -97,15 +97,17 @@ for (const surface of ['desktop', 'terminal', 'vscode'] as const) {
     // Eine Karte ohne wartenden Chat hat kein Feld; der Platz dafür bleibt leer.
     await ui.press({ key: 'karte-gutscheine' })
     expect(await inhalt(ui)).not.toContain('Versuch: von hier antworten')
-    expect(await ui.findAll({ type: 'Input' })).toHaveLength(0)
+    expect(await ui.findAll({ type: 'Input', key: 'antwort' })).toHaveLength(0)
     expect(await ui.findAll({ type: 'Box', key: 'detail-zusatz' })).toHaveLength(1)
+    // Das einzige Feld der Leiste ist dann das für eine neue Festlegung: Es hängt an keiner Karte.
+    expect((await ui.findAll({ type: 'Input' })).map(one => one.props.key)).toEqual(['fest-eingabe'])
 
     // Wartet der Chat nicht mehr, verschwindet das Feld auch an seiner Karte.
     await ui.press({ key: 'karte-warenkorb' })
-    expect(await ui.findAll({ type: 'Input' })).toHaveLength(1)
+    expect(await ui.findAll({ type: 'Input', key: 'antwort' })).toHaveLength(1)
     legeChat(welt, 'sitzung-7', { name: 'Warenkorb-Regeln', frage: '' })
     await ui.press({ key: 'laden' })
-    expect(await ui.findAll({ type: 'Input' })).toHaveLength(0)
+    expect(await ui.findAll({ type: 'Input', key: 'antwort' })).toHaveLength(0)
 
     await ui.unmount()
   })
@@ -133,7 +135,7 @@ test('Versuch: ohne Eingabefeld (mobile) und für den eigenen Chat gibt es nicht
 
   await ui.press({ key: `karte-${chatId('sitzung-1')}` })
   expect(await inhalt(ui)).toContain('● Chat: Orchestrator (dieser Chat)')
-  expect(await ui.findAll({ type: 'Input' })).toHaveLength(0)
+  expect(await ui.findAll({ type: 'Input', key: 'antwort' })).toHaveLength(0)
 
   await ui.press({ key: `karte-${chatId('sitzung-3')}` })
   expect(await inhalt(ui)).toContain('Chat ohne Karte')

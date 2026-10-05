@@ -1,8 +1,9 @@
 import { eindeutig, kennung } from '../worte'
 
 // GOAL.md: der Anker des Plans. Die Datei liegt in der Wurzel des Repos und nennt das
-// Endziel, die Zwischenziele auf dem Weg und je Strang das größere Ziel. Hier wird sie nur
-// gelesen: Schreiben tut sie der Chat, auf Zuruf des Nutzers. Kein `$`, kein Zustand.
+// Endziel, die Zwischenziele auf dem Weg, je Strang das größere Ziel und die Festlegungen
+// des Nutzers. Hier wird sie nur gelesen: Schreiben tut sie der Chat, auf Zuruf des Nutzers.
+// Kein `$`, kein Zustand.
 
 export type GoalZwischenziel = {
   // die feste Kennung, unter der auch das Modell das Zwischenziel nennt
@@ -34,6 +35,8 @@ export type Goal = {
   zwischenziele: GoalZwischenziel[]
   // in der Reihenfolge der Datei: Das ist die Reihenfolge der Spalten
   straenge: GoalStrang[]
+  // die Sätze unter „Festlegungen“, wörtlich: Sie gewinnen bei jedem Ableiten
+  festlegungen: string[]
   // was beim Lesen aufgefallen ist
   hinweise: string[]
 }
@@ -51,12 +54,15 @@ export const GOAL_FORMAT = `# Ziel
 ## Stränge
 ### <Name des Strangs>
 Ziel: <wohin dieser Strang führt, oder leer>
-Gehört zu: <eines der Zwischenziele, wenn es passt>`
+Gehört zu: <eines der Zwischenziele, wenn es passt>
+
+## Festlegungen
+- <ein Satz, der bei jedem Ableiten des Plans gewinnt>`
 
 // Kennungen, die im Plan schon etwas anderes bedeuten.
 const VERGEBEN = ['endziel', 'stamm', 'alle', 'treffpunkt']
 
-type Teil = 'kein' | 'endziel' | 'zwischen' | 'straenge'
+type Teil = 'kein' | 'endziel' | 'zwischen' | 'straenge' | 'fest'
 
 // Fett, Unterstrichen und Code-Zeichen fallen weg, Leerraum wird zu einem Leerzeichen.
 const glatt = (wert: string): string =>
@@ -80,7 +86,15 @@ export const istOffen = (wert: string): boolean => {
   return kern === '' || PLATZHALTER.test(ganz) || OFFEN_GENAU.test(kern) || OFFEN_ANFANG.test(kern)
 }
 
-// Welcher Abschnitt mit dieser Überschrift beginnt; null, wenn es keiner der drei ist.
+// Woran zwei Sätze als dieselbe Festlegung gelten: Leerraum, Groß- und Kleinschreibung und
+// der Punkt am Ende zählen nicht. So fällt die lokale Kopie eines Satzes weg, auch wenn der
+// Chat ihn in GOAL.md eine Spur anders geschrieben hat.
+export const satzSchluessel = (satz: string): string =>
+  glatt(satz)
+    .toLowerCase()
+    .replace(/[\s.!]+$/, '')
+
+// Welcher Abschnitt mit dieser Überschrift beginnt; null, wenn es keiner der vier ist.
 const teilVon = (titel: string): Exclude<Teil, 'kein'> | null => {
   const name = kennung(titel.split(/[:：]/)[0] ?? '')
 
@@ -90,6 +104,10 @@ const teilVon = (titel: string): Exclude<Teil, 'kein'> | null => {
 
   if (/^(zwischenziel|meilenstein|etappenziel)/.test(name)) {
     return 'zwischen'
+  }
+
+  if (/^festlegung/.test(name)) {
+    return 'fest'
   }
 
   return /^(straenge|strang|bahnen|bahn)(-|$)/.test(name) ? 'straenge' : null
@@ -106,7 +124,7 @@ export const leseGoal = (roh: string | null): Goal => {
   const hinweise: string[] = []
 
   if (roh === null) {
-    return { vorhanden: false, endziel: '', zwischenziele: [], straenge: [], hinweise }
+    return { vorhanden: false, endziel: '', zwischenziele: [], straenge: [], festlegungen: [], hinweise }
   }
 
   const zeilen = roh
@@ -125,6 +143,11 @@ export const leseGoal = (roh: string | null): Goal => {
   let strang: RohStrang | null = null
   // true: Die letzte Zeile war „Ziel: …“, die nächste darf sie fortsetzen
   let istZielOffen = false
+  // die Sätze unter „Festlegungen“: als Liste, und Zeile für Zeile, falls dort keine Liste steht
+  const saetze: string[] = []
+  const loseSaetze: string[] = []
+  // true: Die letzte Zeile gehörte zu einem Satz der Liste, die Zeile gleich darunter setzt ihn fort
+  let istSatzOffen = false
 
   for (const zeile of zeilen) {
     if (/^\s*(```|~~~)/.test(zeile)) {
@@ -143,6 +166,7 @@ export const leseGoal = (roh: string | null): Goal => {
       const titel = glatt(kopf[2] ?? '')
 
       istZielOffen = false
+      istSatzOffen = false
 
       // Unter „Stränge“ ist jede tiefere Überschrift ein Strang, wie auch immer er heißt.
       if (teil === 'straenge' && tiefe > ebene) {
@@ -195,6 +219,28 @@ export const leseGoal = (roh: string | null): Goal => {
         punkte.push({ titel: glatt(haken?.[2] ?? inhalt), erreicht: /x/i.test(haken?.[1] ?? '') })
       } else if (inListe === null && inhalt !== '' && !istEingerueckt) {
         lose.push(inhalt)
+      }
+
+      continue
+    }
+
+    if (teil === 'fest') {
+      const istEingerueckt = /^(\s{2,}|\t)/.test(zeile)
+
+      if (inListe !== null && !istEingerueckt) {
+        saetze.push(glatt(inhalt.replace(/^\[[ xX]\]\s*/, '')))
+        istSatzOffen = true
+      } else if (inListe === null && istSatzOffen && inhalt !== '') {
+        // Ein langer Satz über mehrere Zeilen: Die Zeile gleich darunter gehört noch zu ihm.
+        saetze[saetze.length - 1] = `${saetze[saetze.length - 1] ?? ''} ${inhalt}`.trim()
+      } else {
+        // Eine Leerzeile beendet den Satz. Ein eingerückter Listenpunkt auch: Er erläutert
+        // den Satz darüber und ist selbst keiner.
+        istSatzOffen = false
+
+        if (inListe === null && inhalt !== '') {
+          loseSaetze.push(inhalt)
+        }
       }
 
       continue
@@ -308,6 +354,20 @@ export const leseGoal = (roh: string | null): Goal => {
     })
   }
 
+  // ----- Festlegungen -----
+
+  const festlegungen: string[] = []
+
+  // Ohne Liste zählt jede Zeile des Abschnitts.
+  for (const einer of (saetze.length > 0 ? saetze : loseSaetze).filter(one => !istOffen(one))) {
+    if (festlegungen.some(one => satzSchluessel(one) === satzSchluessel(einer))) {
+      hinweise.push(`GOAL.md nennt die Festlegung „${einer}“ zweimal: Die zweite fällt weg.`)
+      continue
+    }
+
+    festlegungen.push(einer)
+  }
+
   const satz = glatt(endziel.join(' '))
 
   return {
@@ -315,11 +375,14 @@ export const leseGoal = (roh: string | null): Goal => {
     endziel: istOffen(satz) ? '' : satz,
     zwischenziele,
     straenge: fertig,
+    festlegungen,
     hinweise,
   }
 }
 
-// true: Die Datei ist da, legt aber noch nichts fest.
+// true: Die Datei ist da, sagt aber noch nichts über Ziele: kein Endziel, kein Zwischenziel,
+// kein Strang. Festlegungen allein ändern daran nichts: Auch dann ist alles über Ziele nur
+// vermutet, und beide Ansichten bieten weiter an, GOAL.md mit dem Chat zu entwerfen.
 export const istLeer = (goal: Goal): boolean =>
   goal.vorhanden && goal.endziel === '' && goal.zwischenziele.length === 0 && goal.straenge.length === 0
 
@@ -340,6 +403,7 @@ export const promptGoalAnlegen = (): string =>
     `Lies dazu README.md, CLAUDE.md und die Doku unter docs/ und schlag mir einen Entwurf vor. ${REGELN}`,
     `Das Format:\n\n${GOAL_FORMAT}`,
     'Die Stränge sind später die Bahnen des Graphen und die Spalten der Karten: wenige, je ein bis zwei Worte, so wie das Projekt seine Arbeit selbst gliedert.',
+    'Unter „Festlegungen“ stehen Sätze von mir, die bei jedem Ableiten des Plans gelten. Der Abschnitt bleibt leer, solange ich keine nenne: Schlag selbst keine vor.',
   ].join('\n\n')
 
 export type StrangFrage = {
@@ -384,3 +448,14 @@ export const promptEndziel = (mitGoal: boolean, vermutung: string): string =>
   ]
     .filter(one => one !== '')
     .join('\n\n')
+
+// Der Auftrag, die Festlegungen, die erst lokal liegen, in GOAL.md einzutragen. Sobald ein
+// Satz dort steht, lässt der Mod seine lokale Kopie fallen.
+export const promptFestlegungen = (saetze: readonly string[], mitGoal: boolean): string =>
+  [
+    `Trag ${saetze.length === 1 ? 'diese Festlegung' : 'diese Festlegungen'} in GOAL.md ein, unter „## Festlegungen“, je Satz ein Listenpunkt und wörtlich:\n\n${saetze.map(one => `- ${one}`).join('\n')}`,
+    mitGoal
+      ? 'Gibt es den Abschnitt „## Festlegungen“ noch nicht, leg ihn am Ende der Datei an. Was dort schon steht, bleibt stehen. Ändere sonst nichts an der Datei.'
+      : `GOAL.md gibt es noch nicht. Leg sie in der Wurzel des Repos an, in diesem Format, und lass offen, was noch nicht klar ist:\n\n${GOAL_FORMAT}`,
+    'Das sind Sätze von mir, die bei jedem Ableiten des Plans gelten: Der Ziel-Graph liest sie aus GOAL.md.',
+  ].join('\n\n')

@@ -2,6 +2,7 @@ import type {
   BoxProps,
   ButtonProps,
   ElementConstructor,
+  InputProps,
   SelectProps,
   SvgProps,
   TextProps,
@@ -14,13 +15,15 @@ import type { Auftrag } from './plan/lesen'
 // Was die zwei Leisten zum Zeichnen bekommen. Sie selbst fassen die Engine nie an:
 // register.tsx reicht ihnen die Elemente der Surface und die Handgriffe ihrer Knöpfe.
 
-// Die Elemente der Surface. Select und Svg gibt es nicht überall: null heißt Ersatz zeichnen.
+// Die Elemente der Surface. Select, Svg und Input gibt es nicht überall: null heißt Ersatz
+// zeichnen. Ein Eingabefeld hat nur die breite Ansicht.
 export type Teile = {
   Box: ElementConstructor<BoxProps>
   Text: ElementConstructor<TextProps>
   Button: ElementConstructor<ButtonProps>
   Select: ElementConstructor<SelectProps> | null
   Svg: ElementConstructor<SvgProps> | null
+  Input: ElementConstructor<InputProps> | null
 }
 
 // Was ein Knopf auslöst. `validate` folgt `$` nicht über einen Import hinweg: Deshalb baut
@@ -39,4 +42,9 @@ export type Taten = {
   // Die breite Ansicht: eine Karte wählen, die Farben festlegen.
   waehle: (id: string) => void
   faerbe: (farben: ZielGraphFarben) => void
+  // Die breite Ansicht, Festlegungen: sich merken, was im Feld steht, den Satz aufnehmen
+  // (ohne Angabe den aus dem Feld) und eine lokale Festlegung zurücknehmen.
+  merkeFest: (text: string) => void
+  festlegen: (satz?: string) => void
+  entferneFest: (satz: string) => void
 }

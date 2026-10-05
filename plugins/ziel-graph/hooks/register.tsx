@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { ZielGraphLauf } from '../types'
+import type { ZielGraphGeladen, ZielGraphLauf } from '../types'
 
 import { fasseZusammen, kurz, liesChats, nameVon, neueFragen, nimmAuf, nimmHeraus } from './chats'
 import type { ChatZugang } from './chats'
@@ -12,7 +12,7 @@ import { registriereAntwort } from './karten/antwort'
 import { zeichneKartenLeiste } from './karten/leiste'
 import type { KartenLage } from './karten/leiste'
 import { wunschZellen } from './karten/zeichnen'
-import { ladePlan, leiteAb } from './plan/lauf'
+import { entferneFestlegung, ladePlan, legeFestlegung, leiteAb } from './plan/lauf'
 import type { Aufruf, LaufZugang } from './plan/lauf'
 import type { Auftrag } from './plan/lesen'
 import type { Taten } from './teile'
@@ -20,9 +20,10 @@ import { mehrzahl, sekunden } from './worte'
 import { GRAPH_START, KARTEN_START, KEINE_CHATS, NICHTS_GELADEN, RUHE } from './zustand'
 
 // Der Zugang des Mods zur Engine: ein Plan, zwei Ansichten. Hier stehen das Laden, der Lauf,
-// der den Plan ableitet, die Handgriffe aller Knöpfe und die zwei Leisten. `validate` folgt
-// `$` nicht über einen Import hinweg: Jede Stelle, an der der Mod die Engine braucht, steht
-// deshalb in dieser Datei. Gezeichnet und gerechnet wird in den Dateien daneben, ohne `$`.
+// der den Plan ableitet, das Aufnehmen einer Festlegung, die Handgriffe aller Knöpfe und die
+// zwei Leisten. `validate` folgt `$` nicht über einen Import hinweg: Jede Stelle, an der der
+// Mod die Engine braucht, steht deshalb in dieser Datei. Gezeichnet und gerechnet wird in den
+// Dateien daneben, ohne `$`.
 
 // Die schmale Ansicht: die laufenden Chats und der Plan als Graph.
 const GRAPH = 'ziel-graph'
@@ -48,6 +49,9 @@ const graph = atom({ plugin: 'ziel-graph', key: 'graph' } as const, GRAPH_START)
 const karten = atom({ plugin: 'ziel-graph', key: 'karten' } as const, KARTEN_START)
 
 let letzterPrompt = ''
+// Was im Feld für eine neue Festlegung steht. Kein Zustand der Session: Jeder Tastendruck
+// würde sonst die breite Ansicht neu zeichnen.
+let festEntwurf = ''
 // Die Fragen, die dieses Fenster schon kennt: nur neue lösen einen Toast aus.
 let bekannt: Map<string, string> | null = null
 // Der Takt, in dem die Chats neu gelesen werden; null, solange er nicht läuft.
@@ -118,8 +122,9 @@ const ladeChats = async ($: EngineInterface, nurNeues = false): Promise<void> =>
   }
 }
 
-// Lädt den letzten gespeicherten Plan des Repos, GOAL.md und die Chats. Kein Modell-Aufruf.
-const lade = async ($: EngineInterface): Promise<void> => {
+// Lädt den letzten gespeicherten Plan des Repos, GOAL.md und die Festlegungen. Kein
+// Modell-Aufruf.
+const ladeNurPlan = async ($: EngineInterface): Promise<void> => {
   try {
     const neu = await ladePlan(zugang($))
 
@@ -127,9 +132,20 @@ const lade = async ($: EngineInterface): Promise<void> => {
   } catch (fehler) {
     $.ui.log(`Plan nicht lesbar: ${String(fehler)}`)
   }
+}
 
+// Dasselbe und dazu die Chats.
+const lade = async ($: EngineInterface): Promise<void> => {
+  await ladeNurPlan($)
   await ladeChats($)
 }
+
+// Was beide Leisten vom Plan zeichnen. Der Zustand übersteht ein Neuladen des Mod-Codes:
+// Stammt er noch von einer älteren Fassung, fehlen ihm Felder, und die Anfangswerte füllen sie.
+const liesGeladen = async ($: EngineInterface): Promise<ZielGraphGeladen> => ({
+  ...NICHTS_GELADEN,
+  ...(await read($, geladen)),
+})
 
 // Jede Session liest die Chats von selbst neu: Nur so meldet sie eine neue Frage.
 const haltChatsFrisch = ($: EngineInterface): void => {
@@ -165,6 +181,41 @@ const nimmChatHeraus = async ($: EngineInterface): Promise<void> => {
 const nachAntwort = async ($: EngineInterface, antwort: string): Promise<void> => {
   if (await fasseZusammen(zugang($), antwort, letzterPrompt)) {
     await ladeChats($)
+  }
+}
+
+// ---------- Festlegungen ----------
+
+// Nimmt einen Satz des Nutzers als Festlegung auf: Er gilt ab dem nächsten Ableiten und
+// liegt erst lokal, im Ordner des Plans. GOAL.md schreibt der Mod nie.
+const legeFest = async ($: EngineInterface, satz: string): Promise<void> => {
+  try {
+    const ausgang = await legeFestlegung(zugang($), satz)
+
+    if (!ausgang.ok) {
+      $.ui.toast(ausgang.grund, { timeoutMs: 6000 })
+
+      return
+    }
+
+    festEntwurf = ''
+    await ladeNurPlan($)
+    $.ui.toast('Festgelegt. Der Satz gilt ab dem nächsten Ableiten.', { timeoutMs: 6000 })
+  } catch (fehler) {
+    $.ui.toast('Die Festlegung ließ sich nicht speichern.', { timeoutMs: 6000 })
+    $.ui.log(`Festlegung nicht gespeichert: ${String(fehler)}`)
+  }
+}
+
+// Nimmt eine Festlegung zurück, die erst lokal liegt.
+const nimmFestZurueck = async ($: EngineInterface, satz: string): Promise<void> => {
+  try {
+    await entferneFestlegung(zugang($), satz)
+    await ladeNurPlan($)
+    $.ui.toast('Festlegung entfernt.')
+  } catch (fehler) {
+    $.ui.toast('Die Festlegung ließ sich nicht entfernen.', { timeoutMs: 6000 })
+    $.ui.log(`Festlegung nicht entfernt: ${String(fehler)}`)
   }
 }
 
@@ -349,6 +400,12 @@ const tatenVon = ($: EngineInterface): Taten => ({
     })),
   waehle: id => void update($, karten, alt => ({ ...alt, wahl: id })),
   faerbe: farben => void update($, karten, alt => ({ ...alt, farben })),
+  merkeFest: text => {
+    festEntwurf = text
+  },
+  // Enter im Feld bringt den Satz mit; der Knopf nimmt, was im Feld steht.
+  festlegen: satz => void legeFest($, satz ?? festEntwurf),
+  entferneFest: satz => void nimmFestZurueck($, satz),
 })
 
 export const register: Register = on => {
@@ -433,7 +490,7 @@ export const register: Register = on => {
     const laufend = await read($, chats)
     const lage: GraphLage = {
       laufend: { ...laufend, gelesen: Math.max(laufend.gelesen, await read($, uhr)) },
-      stand: await read($, geladen),
+      stand: await liesGeladen($),
       jetzt: await read($, lauf),
       wahl: await read($, graph),
     }
@@ -442,39 +499,41 @@ export const register: Register = on => {
     if (e.surface === 'terminal') {
       const { Box, Text, Button } = $.ui.resolve(e)
 
-      return zeichneGraphLeiste({ Box, Text, Button, Select: null, Svg: null }, lage, tatenVon($))
+      return zeichneGraphLeiste({ Box, Text, Button, Select: null, Svg: null, Input: null }, lage, tatenVon($))
     }
 
     const { Box, Text, Button, Svg } = $.ui.resolve(e)
 
-    return zeichneGraphLeiste({ Box, Text, Button, Select: null, Svg }, lage, tatenVon($))
+    return zeichneGraphLeiste({ Box, Text, Button, Select: null, Svg, Input: null }, lage, tatenVon($))
   })
 
   // Die breite Ansicht. Sie liest denselben Plan, dieselben Chats und denselben Lauf.
   on('ui.render', { component: 'Pane', requestId: KARTEN }, async ($, e) => {
     const lage: KartenLage = {
-      stand: await read($, geladen),
+      stand: await liesGeladen($),
       laufend: await read($, chats),
       jetzt: await read($, lauf),
       wahl: await read($, karten),
       zellen: e.props.bodyColumns,
+      entwurf: festEntwurf,
     }
 
-    // Das Terminal hat kein Svg, die mobile App kein Select: dort zeichnet der Ersatz.
+    // Das Terminal hat kein Svg, die mobile App weder Select noch Eingabefeld: dort
+    // zeichnet der Ersatz.
     if (e.surface === 'terminal') {
-      const { Box, Text, Button, Select } = $.ui.resolve(e)
+      const { Box, Text, Button, Select, Input } = $.ui.resolve(e)
 
-      return zeichneKartenLeiste({ Box, Text, Button, Select, Svg: null }, lage, tatenVon($))
+      return zeichneKartenLeiste({ Box, Text, Button, Select, Svg: null, Input }, lage, tatenVon($))
     }
 
     if (e.surface === 'mobile') {
       const { Box, Text, Button, Svg } = $.ui.resolve(e)
 
-      return zeichneKartenLeiste({ Box, Text, Button, Select: null, Svg }, lage, tatenVon($))
+      return zeichneKartenLeiste({ Box, Text, Button, Select: null, Svg, Input: null }, lage, tatenVon($))
     }
 
-    const { Box, Text, Button, Select, Svg } = $.ui.resolve(e)
+    const { Box, Text, Button, Select, Svg, Input } = $.ui.resolve(e)
 
-    return zeichneKartenLeiste({ Box, Text, Button, Select, Svg }, lage, tatenVon($))
+    return zeichneKartenLeiste({ Box, Text, Button, Select, Svg, Input }, lage, tatenVon($))
   })
 }
