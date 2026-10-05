@@ -12,18 +12,21 @@ import { registriereAntwort } from './karten/antwort'
 import { zeichneKartenLeiste } from './karten/leiste'
 import type { KartenLage } from './karten/leiste'
 import { wunschZellen } from './karten/zeichnen'
-import { entferneFestlegung, ladePlan, legeFestlegung, leiteAb } from './plan/lauf'
+import { entferneFestlegung, ladeMitTickets, legeFestlegung, leiteAb } from './plan/lauf'
 import type { Aufruf, LaufZugang } from './plan/lauf'
 import type { Auftrag } from './plan/lesen'
+import { liesTickets } from './plan/tickets'
+import type { TicketLage } from './plan/tickets'
 import type { Taten } from './teile'
 import { mehrzahl, sekunden } from './worte'
 import { GRAPH_START, KARTEN_START, KEINE_CHATS, NICHTS_GELADEN, RUHE } from './zustand'
 
 // Der Zugang des Mods zur Engine: ein Plan, zwei Ansichten. Hier stehen das Laden, der Lauf,
 // der den Plan ableitet, das Aufnehmen einer Festlegung, die Handgriffe aller Knöpfe und die
-// zwei Leisten. `validate` folgt `$` nicht über einen Import hinweg: Jede Stelle, an der der
-// Mod die Engine braucht, steht deshalb in dieser Datei. Gezeichnet und gerechnet wird in den
-// Dateien daneben, ohne `$`.
+// zwei Leisten. Das Ticket-System des Repos wird nur gefragt, wenn der Plan geladen wird,
+// bei „Neu laden“ und einmal je Lauf. `validate` folgt `$` nicht über einen Import hinweg:
+// Jede Stelle, an der der Mod die Engine braucht, steht deshalb in dieser Datei. Gezeichnet
+// und gerechnet wird in den Dateien daneben, ohne `$`.
 
 // Die schmale Ansicht: die laufenden Chats und der Plan als Graph.
 const GRAPH = 'ziel-graph'
@@ -56,6 +59,9 @@ let festEntwurf = ''
 let bekannt: Map<string, string> | null = null
 // Der Takt, in dem die Chats neu gelesen werden; null, solange er nicht läuft.
 let chatTakt: Timer | null = null
+// Was das Ticket-System zuletzt genannt hat; null, solange es in diesem Fenster noch nicht
+// gefragt wurde. Wer den Plan nur neu aufbaut, etwa nach einer Festlegung, nimmt das.
+let tickets: TicketLage | null = null
 // Ob in diesem Fenster gerade ein Lauf unterwegs ist, und seit wann. Der Zustand `lauf`
 // übersteht ein Neuladen des Mods, der Lauf selbst nicht: deshalb zählt für „läuft schon“
 // nur das hier.
@@ -122,22 +128,47 @@ const ladeChats = async ($: EngineInterface, nurNeues = false): Promise<void> =>
   }
 }
 
-// Lädt den letzten gespeicherten Plan des Repos, GOAL.md und die Festlegungen. Kein
-// Modell-Aufruf.
-const ladeNurPlan = async ($: EngineInterface): Promise<void> => {
-  try {
-    const neu = await ladePlan(zugang($))
+// Woher der Stand der Tickets beim Laden kommt. 'frisch': Das Ticket-System wird gefragt.
+// 'gemerkt': Es gilt, was es zuletzt genannt hat, und es wird nicht gefragt.
+type TicketWahl = 'frisch' | 'gemerkt'
 
-    await update($, geladen, () => neu)
+// Lädt den letzten gespeicherten Plan des Repos, GOAL.md, die Festlegungen und den Stand der
+// Tickets. Kein Modell-Aufruf.
+const ladeNurPlan = async ($: EngineInterface, wie: TicketWahl = 'frisch'): Promise<void> => {
+  try {
+    const neu = await ladeMitTickets(zugang($), wie === 'frisch' ? undefined : tickets)
+
+    // Ohne gespeicherten Plan wird nicht gefragt: Dann bleibt, was schon gemerkt ist.
+    tickets = neu.tickets ?? tickets
+    await update($, geladen, () => neu.geladen)
   } catch (fehler) {
     $.ui.log(`Plan nicht lesbar: ${String(fehler)}`)
   }
 }
 
 // Dasselbe und dazu die Chats.
-const lade = async ($: EngineInterface): Promise<void> => {
-  await ladeNurPlan($)
+const lade = async ($: EngineInterface, wie: TicketWahl = 'frisch'): Promise<void> => {
+  await ladeNurPlan($, wie)
   await ladeChats($)
+}
+
+// Fragt das Ticket-System und legt seinen Stand auf den Plan. Ohne Plan gibt es nichts
+// aufzufrischen, und ohne Ticket-System bleibt alles, wie es geladen ist.
+const frischeTicketsAuf = async ($: EngineInterface): Promise<void> => {
+  try {
+    if ((await read($, geladen)).plan === null) {
+      return
+    }
+
+    const lage = await liesTickets(zugang($))
+
+    if (lage.tracker !== 'keine') {
+      tickets = lage
+      await ladeNurPlan($, 'gemerkt')
+    }
+  } catch (fehler) {
+    $.ui.log(`Tickets nicht gelesen: ${String(fehler)}`)
+  }
 }
 
 // Was beide Leisten vom Plan zeichnen. Der Zustand übersteht ein Neuladen des Mod-Codes:
@@ -146,6 +177,14 @@ const liesGeladen = async ($: EngineInterface): Promise<ZielGraphGeladen> => ({
   ...NICHTS_GELADEN,
   ...(await read($, geladen)),
 })
+
+// Lädt, was sofort da ist, und fragt das Ticket-System gleich danach. Es antwortet übers
+// Netz: Wer eine Session beginnt oder eine Leiste öffnet, wartet nicht darauf. Bis dahin
+// zeigen die Bündel, was es zuletzt genannt hat, und davor den Stand vom Ableiten.
+const ladeOhneWarten = async ($: EngineInterface): Promise<void> => {
+  await lade($, 'gemerkt')
+  $.clock.after(0, () => void frischeTicketsAuf($))
+}
 
 // Jede Session liest die Chats von selbst neu: Nur so meldet sie eine neue Frage.
 const haltChatsFrisch = ($: EngineInterface): void => {
@@ -199,7 +238,7 @@ const legeFest = async ($: EngineInterface, satz: string): Promise<void> => {
     }
 
     festEntwurf = ''
-    await ladeNurPlan($)
+    await ladeNurPlan($, 'gemerkt')
     $.ui.toast('Festgelegt. Der Satz gilt ab dem nächsten Ableiten.', { timeoutMs: 6000 })
   } catch (fehler) {
     $.ui.toast('Die Festlegung ließ sich nicht speichern.', { timeoutMs: 6000 })
@@ -211,7 +250,7 @@ const legeFest = async ($: EngineInterface, satz: string): Promise<void> => {
 const nimmFestZurueck = async ($: EngineInterface, satz: string): Promise<void> => {
   try {
     await entferneFestlegung(zugang($), satz)
-    await ladeNurPlan($)
+    await ladeNurPlan($, 'gemerkt')
     $.ui.toast('Festlegung entfernt.')
   } catch (fehler) {
     $.ui.toast('Die Festlegung ließ sich nicht entfernen.', { timeoutMs: 6000 })
@@ -258,6 +297,7 @@ const fuehreAus = async ($: EngineInterface, seit: number): Promise<void> => {
     if (ausgang.ok) {
       const { plan, warnungen, fakten } = ausgang.geladen
 
+      tickets = ausgang.tickets
       await update($, geladen, () => ausgang.geladen)
       // Der neue Plan hat neue Zeilen: Was im Graphen aufgeklappt war, gibt es so nicht mehr.
       await update($, graph, alt => ({ ...alt, offen: [] }))
@@ -424,7 +464,7 @@ export const register: Register = on => {
     })
     await raeumeAuf($)
     // Eine Leiste, die vom letzten Mal noch offen ist, soll nicht leer dastehen.
-    await lade($)
+    await ladeOhneWarten($)
     haltChatsFrisch($)
 
     return next(e)
@@ -448,7 +488,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'graph' }, async $ => {
-    await lade($)
+    await ladeOhneWarten($)
     haltChatsFrisch($)
 
     const offen = await $.ui.open({ id: GRAPH, title: GRAPH_TITEL, columns: SPALTEN })
@@ -461,7 +501,7 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'orchestrator' }, async $ => {
-    await lade($)
+    await ladeOhneWarten($)
     haltChatsFrisch($)
 
     const { plan } = await read($, geladen)

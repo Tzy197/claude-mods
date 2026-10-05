@@ -10,6 +10,7 @@ import type {
 
 import { alter, nameVon, zaehler } from '../chats'
 import { MODELL } from '../fest'
+import { neueTicketsZeile } from '../plan/frisch'
 import {
   aenderungsZeile,
   endzielAuftrag,
@@ -301,6 +302,8 @@ const zeichneGraph = (teile: Teile, lage: GraphLage, plan: ZielGraphPlan, taten:
   const daten = fasseErledigtes(graphDaten(plan, laufend, stand.aenderungen))
   // Was der letzte Lauf geändert hat, in einer Zeile; die Liste dazu hat die breite Ansicht.
   const seither = aenderungsZeile(stand.aenderungen)
+  // Offene Tickets, die es beim letzten Ableiten noch nicht gab: Sie stehen in keinem Bündel.
+  const neue = neueTicketsZeile(stand.neueTickets)
   const bild = sicht(daten, einstellung)
   const streifen = Svg === null ? null : schneide(zeichneSvg(daten, bild, einstellung.farben), bild)
   // Jeder Streifen trägt das ganze Bild. Eines über der Grenze der Engine wird nicht
@@ -328,6 +331,7 @@ const zeichneGraph = (teile: Teile, lage: GraphLage, plan: ZielGraphPlan, taten:
             {seither}
           </Text>
         )}
+        {neue !== '' && <Text wrap="wrap">{neue}</Text>}
       </Box>
 
       <Box flexDirection="row" flexWrap="wrap" columnGap={1}>

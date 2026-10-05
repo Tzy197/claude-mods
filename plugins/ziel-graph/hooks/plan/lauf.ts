@@ -1,6 +1,12 @@
 import type { ModelCompleteResult } from 'claude-code'
 
-import type { ZielGraphAenderungen, ZielGraphFakten, ZielGraphGeladen } from '../../types'
+import type {
+  ZielGraphAenderungen,
+  ZielGraphFakten,
+  ZielGraphGeladen,
+  ZielGraphPlan,
+  ZielGraphTracker,
+} from '../../types'
 
 import { ordnerVon } from '../chats'
 import type { ChatZugang } from '../chats'
@@ -10,15 +16,18 @@ import { AUFTRAG, baueEingabe, normalisiere, quellenNamen } from './ableiten'
 import type { Ableitung, UmfeldChat, Voriger } from './ableiten'
 import { gleicheSaetze, legeFest, liesFestlegungen, nimmFestZurueck } from './festlegungen'
 import type { FestAusgang } from './festlegungen'
-import { istLeer, leseGoal } from './goal'
+import { frische, neueTickets } from './frisch'
+import { KEINE_NAMEN, istLeer, leseGoal, leseTrackerNamen } from './goal'
 import { liesGoal, sammle } from './quellen'
 import type { QuellenZugang } from './quellen'
+import { KEINE_TICKETS, TRACKER_NAME, leseGemerkte, liesTickets, merke } from './tickets'
+import type { MerkTicket, TicketLage } from './tickets'
 import { leseAenderungen, vergleiche } from './vergleich'
 
-// Ein Lauf von Anfang bis Ende: Quellen, Festlegungen und den vorigen Plan lesen, das Modell
-// einmal fragen, die Antwort aufräumen, mit dem vorigen Plan vergleichen und alles als JSON
-// ablegen. Dazu das Laden des letzten Plans und das Aufnehmen einer Festlegung. Kein `$`:
-// register.tsx reicht einen Zugang.
+// Ein Lauf von Anfang bis Ende: Quellen, Tickets, Festlegungen und den vorigen Plan lesen,
+// das Modell einmal fragen, die Antwort aufräumen, den Stand der Tickets darauf legen, mit
+// dem vorigen Plan vergleichen und alles als JSON ablegen. Dazu das Laden des letzten Plans
+// und das Aufnehmen einer Festlegung. Kein `$`: register.tsx reicht einen Zugang.
 
 // Was das Laden braucht: lesen, und schreiben nur, um die lokale Kopie einer Festlegung
 // fallen zu lassen, die inzwischen in GOAL.md steht.
@@ -32,7 +41,8 @@ export type LaufZugang = LadeZugang & Pick<ChatZugang, 'frage'>
 export type Aufruf = { modell: string; maxTokens: number; timeoutMs: number }
 
 export type LaufAusgang =
-  | { ok: true; geladen: ZielGraphGeladen }
+  // tickets: was der Lauf im Ticket-System gelesen hat
+  | { ok: true; geladen: ZielGraphGeladen; tickets: TicketLage }
   // datei: wo der gescheiterte Lauf liegt; '' wenn er sich nicht schreiben ließ
   | { ok: false; grund: string; datei: string }
 
@@ -42,7 +52,8 @@ export type Gespeichert = {
   fakten: ZielGraphFakten
   // die Antwort des Modells, roh
   antwort: string
-  umfeld: { chats: UmfeldChat[]; quellen: string[] }
+  // tickets: die Tickets, die der Lauf gelesen hat; leer in einer Datei der Versionen 1 und 2
+  umfeld: { chats: UmfeldChat[]; quellen: string[]; tickets: MerkTicket[] }
   // der Text von GOAL.md beim Ableiten; null, wenn es keine gab
   goal: string | null
   // was beim Lesen der Quellen ausgelassen wurde
@@ -54,10 +65,12 @@ export type Gespeichert = {
   aenderungen: ZielGraphAenderungen | null
 }
 
-// Version 2 kennt die Festlegungen und die Änderungen. Eine Datei der Version 1 lädt weiter.
-const VERSION = 2
-const VERSIONEN: readonly unknown[] = [1, VERSION]
+// Version 2 kennt die Festlegungen und die Änderungen, Version 3 die Tickets. Dateien der
+// Versionen 1 und 2 laden weiter.
+const VERSION = 3
+const VERSIONEN: readonly unknown[] = [1, 2, VERSION]
 const PLAN = 'plan.json'
+const TRACKER: readonly ZielGraphTracker[] = ['gitlab', 'github', 'markdown', 'keine']
 
 // Wo Plan und Läufe dieses Repos liegen: in einem Unterordner des Ordners, in dem direkt
 // die Chat-Stände liegen. So zählt keine Datei eines Laufs als Chat. Alle Worktrees teilen ihn.
@@ -92,12 +105,14 @@ const goalStand = (jetzt: string | null, beimAbleiten: string | null): ZielGraph
   geaendert: jetzt !== beimAbleiten,
 })
 
-// Der Plan vor einem Lauf: der gespeicherte, aufgeräumt gegen die GOAL.md von jetzt, also
-// so, wie beide Ansichten ihn gerade zeigen. null: Es gibt keinen brauchbaren.
+// Der Plan vor einem Lauf: der gespeicherte, aufgeräumt gegen die GOAL.md von jetzt und mit
+// dem Stand der Tickets von jetzt, also so, wie beide Ansichten ihn gerade zeigen. null: Es
+// gibt keinen brauchbaren.
 const liesVorigen = async (
   zugang: Pick<ChatZugang, 'lies'>,
   ordner: string,
   goal: string | null,
+  tickets: TicketLage,
 ): Promise<Voriger | null> => {
   let roh: string | null = null
 
@@ -108,7 +123,7 @@ const liesVorigen = async (
   }
 
   const gespeichert = leseGespeichert(roh)
-  const ableitung = gespeichert === null ? null : planAus(gespeichert, goal)
+  const ableitung = gespeichert === null ? null : zeige(gespeichert, goal, tickets).ableitung
 
   return gespeichert !== null && ableitung?.ok === true
     ? { plan: ableitung.plan, zeit: gespeichert.fakten.zeit }
@@ -128,9 +143,13 @@ export const leiteAb = async (
   const quellen = await sammle(zugang)
   const goal = leseGoal(quellen.goal)
   const ordner = await planOrdnerVon(zugang)
+  // Was das Ticket-System gerade nennt: Der Lauf fragt es einmal, für die Eingabe, für den
+  // vorigen Plan und für den Stand des neuen.
+  const tickets = quellen.tickets?.lage ?? KEINE_TICKETS
+  const namen = quellen.tickets?.namen ?? KEINE_NAMEN
   // Die Festlegungen aus GOAL.md und die lokalen, und der Plan, den der Nutzer gerade sieht.
   const festlegungen = await liesFestlegungen(zugang, ordner, goal.festlegungen)
-  const voriger = await liesVorigen(zugang, ordner, quellen.goal)
+  const voriger = await liesVorigen(zugang, ordner, quellen.goal, tickets)
   const eingabe = baueEingabe(quellen, goal, new Date(beginn).toISOString().slice(0, 10), {
     festlegungen: festlegungen.map(one => one.satz),
     voriger,
@@ -151,6 +170,7 @@ export const leiteAb = async (
   const umfeld = {
     chats: quellen.chats.map(one => ({ id: one.id, kennung: one.kennung, name: one.name })),
     quellen: quellenNamen(quellen),
+    tickets: merke(tickets.liste),
   }
   const gelesen =
     roh === null
@@ -165,9 +185,12 @@ export const leiteAb = async (
           ...gelesen,
           grund: `${gelesen.grund} Sie endet an der Grenze von ${aufruf.maxTokens} Tokens und ist wohl abgeschnitten.`,
         }
+  // Was beide Ansichten zeigen: der Plan des Modells mit dem Stand der Tickets darauf.
+  // Gespeichert wird, was das Modell gesagt hat.
+  const gezeigt: ZielGraphPlan | null = ableitung.ok ? frische(ableitung.plan, tickets, namen) : null
   // Was sich gegenüber dem vorigen Plan geändert hat. Ob das Modell die Festlegungen
   // befolgt hat, prüft hier niemand nach: Das sieht der Nutzer am Plan.
-  const aenderungen = ableitung.ok && voriger !== null ? vergleiche(voriger.plan, ableitung.plan) : null
+  const aenderungen = gezeigt !== null && voriger !== null ? vergleiche(voriger.plan, gezeigt) : null
   const ende = await zugang.jetzt()
   const fakten = {
     zeit: beginn,
@@ -177,6 +200,8 @@ export const leiteAb = async (
     chats: quellen.chats.length,
     commits: quellen.commits.length,
     modell: aufruf.modell,
+    tracker: tickets.tracker,
+    tickets: tickets.liste.length,
   }
   const warnungen = [...ableitung.warnungen, ...quellen.hinweise]
   // Alles, womit sich der Lauf später beurteilen lässt.
@@ -208,6 +233,13 @@ export const leiteAb = async (
         wartet: one.frage !== '',
       })),
       commits: { anzahl: quellen.commits.length, zeichen: quellen.commits.join('\n').length },
+      tickets: {
+        tracker: tickets.tracker,
+        gelesen: tickets.liste.length,
+        offen: tickets.liste.filter(one => !one.zu).length,
+        gesendet: quellen.tickets?.gesendet.length ?? 0,
+        namen,
+      },
       festlegungen,
       voriger:
         voriger === null
@@ -239,7 +271,7 @@ export const leiteAb = async (
     datei = ''
   }
 
-  if (!ableitung.ok || roh === null) {
+  if (!ableitung.ok || roh === null || gezeigt === null) {
     return { ok: false, grund: ableitung.ok ? '' : ableitung.grund, datei }
   }
 
@@ -273,8 +305,9 @@ export const leiteAb = async (
 
   return {
     ok: true,
+    tickets,
     geladen: {
-      plan: ableitung.plan,
+      plan: gezeigt,
       warnungen: [
         ...warnungen,
         ...(planDatei === '' ? ['Der Plan ließ sich nicht speichern: Er gilt nur in dieser Session.'] : []),
@@ -289,6 +322,7 @@ export const leiteAb = async (
         ),
       },
       aenderungen,
+      neueTickets: 0,
       gelesen: ende,
     },
   }
@@ -321,6 +355,8 @@ export const leseGespeichert = (roh: string | null): Gespeichert | null => {
         commits: zahl(fakten.commits),
         modell: wort(fakten.modell),
         datei: wort(fakten.datei),
+        tracker: TRACKER.find(one => one === fakten.tracker) ?? 'keine',
+        tickets: zahl(fakten.tickets),
       },
       antwort: wert.antwort,
       umfeld: {
@@ -331,6 +367,7 @@ export const leseGespeichert = (roh: string | null): Gespeichert | null => {
         quellen: (Array.isArray(umfeld.quellen) ? umfeld.quellen : []).filter(
           (one): one is string => typeof one === 'string',
         ),
+        tickets: leseGemerkte(umfeld.tickets),
       },
       goal: typeof wert.goal === 'string' ? wert.goal : null,
       hinweise: (Array.isArray(wert.hinweise) ? wert.hinweise : []).filter(
@@ -351,12 +388,62 @@ export const leseGespeichert = (roh: string | null): Gespeichert | null => {
 export const planAus = (gespeichert: Gespeichert, goal: string | null): Ableitung =>
   normalisiere(gespeichert.antwort, { ...gespeichert.umfeld, goal: leseGoal(goal) })
 
+// Der Plan, so wie beide Ansichten ihn zeigen: die gespeicherte Antwort, aufgeräumt gegen
+// die GOAL.md von jetzt, und darauf der Stand der Tickets. `tickets` ist, was das
+// Ticket-System gerade nennt; mit null, oder wenn es sich nicht lesen ließ, gilt der Stand
+// vom Ableiten, den die Plan-Datei sich gemerkt hat.
+export type Gezeigt = {
+  ableitung: Ableitung
+  // offene Tickets, die es beim Ableiten noch nicht gab
+  neueTickets: number
+  // was beim Lesen der Tickets nicht ging
+  hinweise: string[]
+}
+
+export const zeige = (gespeichert: Gespeichert, goal: string | null, tickets: TicketLage | null): Gezeigt => {
+  const ableitung = planAus(gespeichert, goal)
+  const gemerkt = gespeichert.umfeld.tickets
+  const istGelesen = tickets !== null && tickets.gelesen
+  const bekannt = new Set(gemerkt.map(one => one.schluessel))
+  // Ein anderes Ticket-System als beim Ableiten: Seine Nummern meinen andere Tickets.
+  const istAnderes = istGelesen && gemerkt.length > 0 && tickets.tracker !== gespeichert.fakten.tracker
+  // Es nennt keines der Tickets von damals mehr: ein anderes Repo, oder der Ordner mit den
+  // Dateien ist weg. Daraus zu schließen, alle seien geschlossen, wäre falsch.
+  const istFremd = istGelesen && !istAnderes && gemerkt.length > 0 && !tickets.liste.some(one => bekannt.has(one.schluessel))
+  const stand = istGelesen && !istAnderes && !istFremd ? tickets : { liste: gemerkt, istVollstaendig: false }
+
+  return {
+    ableitung: ableitung.ok
+      ? { ...ableitung, plan: frische(ableitung.plan, stand, leseTrackerNamen(goal), gemerkt) }
+      : ableitung,
+    neueTickets: ableitung.ok && istGelesen ? neueTickets(tickets.liste, gemerkt) : 0,
+    hinweise: [
+      ...(tickets?.hinweise ?? []),
+      ...(istAnderes
+        ? [`Das Ticket-System ist jetzt ${TRACKER_NAME[tickets.tracker]}, beim Ableiten war es ein anderes: Die Bündel zeigen den Stand von damals.`]
+        : []),
+      ...(istFremd
+        ? ['Das Ticket-System nennt keines der Tickets vom letzten Ableiten: Die Bündel zeigen den Stand von damals.']
+        : []),
+      ...(tickets !== null && !tickets.gelesen && gemerkt.length > 0
+        ? ['Die Bündel zeigen den Stand der Tickets vom letzten Ableiten.']
+        : []),
+    ],
+  }
+}
+
+// Was das Laden ergibt: der Zustand für beide Ansichten und, was dabei im Ticket-System
+// gelesen wurde. null: Es wurde nicht gefragt.
+export type Geladen = { geladen: ZielGraphGeladen; tickets: TicketLage | null }
+
 // Lädt den letzten gespeicherten Plan dieses Repos. GOAL.md wird dabei frisch gelesen und
 // geht vor: Ein Ziel, das seit dem Ableiten in GOAL.md steht, zeigen beide Ansichten sofort,
 // ohne neuen Modell-Aufruf. Auch die Festlegungen kommen frisch: aus GOAL.md und aus der
-// lokalen Datei. Ohne gespeicherten Plan sagt das Ergebnis nur, wie GOAL.md dasteht und
-// welche Festlegungen gelten.
-export const ladePlan = async (zugang: LadeZugang): Promise<ZielGraphGeladen> => {
+// lokalen Datei. Und der Stand der Tickets: Ohne Angabe fragt das Laden das Ticket-System;
+// mit `tickets` gilt, was dort steht (null: der Stand vom Ableiten), und es wird nicht
+// gefragt. Ohne gespeicherten Plan sagt das Ergebnis nur, wie GOAL.md dasteht und welche
+// Festlegungen gelten: Dann wird auch kein Ticket gelesen.
+export const ladeMitTickets = async (zugang: LadeZugang, tickets?: TicketLage | null): Promise<Geladen> => {
   const gelesen = await zugang.jetzt()
   const jetzt = await liesGoal(zugang)
   const ordner = await planOrdnerVon(zugang)
@@ -374,37 +461,52 @@ export const ladePlan = async (zugang: LadeZugang): Promise<ZielGraphGeladen> =>
 
   if (gespeichert === null) {
     return {
-      plan: null,
-      warnungen: roh === null ? [] : ['Der gespeicherte Plan ist nicht lesbar: „Neu ableiten“ schreibt ihn neu.'],
-      fakten: null,
-      goal: goalStand(jetzt, jetzt),
-      festlegungen: { liste, geaendert: false },
-      aenderungen: null,
-      gelesen,
+      geladen: {
+        plan: null,
+        warnungen: roh === null ? [] : ['Der gespeicherte Plan ist nicht lesbar: „Neu ableiten“ schreibt ihn neu.'],
+        fakten: null,
+        goal: goalStand(jetzt, jetzt),
+        festlegungen: { liste, geaendert: false },
+        aenderungen: null,
+        neueTickets: 0,
+        gelesen,
+      },
+      tickets: null,
     }
   }
 
-  const ableitung = planAus(gespeichert, jetzt)
+  const lage = tickets === undefined ? await liesTickets(zugang) : tickets
+  const { ableitung, neueTickets: neue, hinweise } = zeige(gespeichert, jetzt, lage)
+  const bekannt = [...ableitung.warnungen, ...gespeichert.hinweise]
 
   return {
-    plan: ableitung.ok ? ableitung.plan : null,
-    warnungen: ableitung.ok
-      ? [...ableitung.warnungen, ...gespeichert.hinweise]
-      : [`Der gespeicherte Plan ist nicht lesbar: ${ableitung.grund}`, ...ableitung.warnungen],
-    // Wo der Plan liegt, sagt der Ort, von dem er gelesen wurde, nicht die Datei selbst.
-    fakten: { ...gespeichert.fakten, datei },
-    goal: goalStand(jetzt, gespeichert.goal),
-    festlegungen: {
-      liste,
-      geaendert: !gleicheSaetze(
-        liste.map(one => one.satz),
-        gespeichert.festlegungen,
-      ),
+    geladen: {
+      plan: ableitung.ok ? ableitung.plan : null,
+      warnungen: ableitung.ok
+        ? // Was schon beim Ableiten nicht ging, steht nur einmal da.
+          [...bekannt, ...hinweise.filter(one => !bekannt.includes(one))]
+        : [`Der gespeicherte Plan ist nicht lesbar: ${ableitung.grund}`, ...ableitung.warnungen],
+      // Wo der Plan liegt, sagt der Ort, von dem er gelesen wurde, nicht die Datei selbst.
+      fakten: { ...gespeichert.fakten, datei },
+      goal: goalStand(jetzt, gespeichert.goal),
+      festlegungen: {
+        liste,
+        geaendert: !gleicheSaetze(
+          liste.map(one => one.satz),
+          gespeichert.festlegungen,
+        ),
+      },
+      aenderungen: ableitung.ok ? gespeichert.aenderungen : null,
+      neueTickets: neue,
+      gelesen,
     },
-    aenderungen: ableitung.ok ? gespeichert.aenderungen : null,
-    gelesen,
+    tickets: lage,
   }
 }
+
+// Dasselbe, wenn nur der Zustand gefragt ist: Das Ticket-System wird dabei gefragt.
+export const ladePlan = async (zugang: LadeZugang): Promise<ZielGraphGeladen> =>
+  (await ladeMitTickets(zugang)).geladen
 
 // ---------- Festlegungen aufnehmen und zurücknehmen ----------
 

@@ -14,7 +14,7 @@ import { lesePlan, zeichneGraph, zeichneKarten } from '../hooks/probe'
 
 import { CHAT, GOAL, KEINE, QUELLEN, STAMM_MIT_GOAL, ZEILEN, antwort, antwortOhneGoal, gelungen, umfeld } from './shop'
 import type { Zeile } from './shop'
-import { BREIT, GITHUB, GRAPH, HEIM, JETZT, ORDNER, TAG, VERBRAUCH, WURZEL, baue, befehl, gespeichert, inhalt, legeShop, leiteAb, mitBildern, mitPlan } from './welt'
+import { BREIT, GRAPH, HEIM, JETZT, ORDNER, REMOTE, TAG, VERBRAUCH, WURZEL, baue, befehl, gespeichert, inhalt, legeShop, leiteAb, mitBildern, mitPlan } from './welt'
 
 // Der Plan wird fortgeschrieben: Ein Lauf bekommt den vorigen Plan in Kurzform, und danach
 // sagen beide Ansichten, was sich gegenüber dem vorigen geändert hat. Alle Testdaten sind erfunden.
@@ -336,7 +336,7 @@ test('der zweite Lauf schreibt den vorigen Plan fort: Er bekommt ihn in Kurzform
   expect(welt.toasts).toEqual(['Ableiten fertig nach 23 s: 11 Bündel in 4 Strängen'])
 
   // Was sich geändert hat, liegt beim Plan.
-  expect(gespeichert(welt, `${ORDNER}/plan.json`)).toMatchObject({ version: 2, antwort: zweiteAntwort() })
+  expect(gespeichert(welt, `${ORDNER}/plan.json`)).toMatchObject({ version: 3, antwort: zweiteAntwort() })
   expect(gespeichert(welt, `${ORDNER}/plan.json`).aenderungen).toEqual(AENDERUNGEN)
   expect(gespeichert(welt, `${ORDNER}/letzter.json`)).toMatchObject({
     quellen: { voriger: { zeit: '2026-10-04T12:00:00.000Z', buendel: 11, stamm: 3 } },
@@ -432,7 +432,7 @@ test('eine Plan-Datei der Version 1 lädt weiter und gilt beim nächsten Lauf al
   // Der nächste Lauf schreibt ihn fort und legt die Datei in der neuen Form ab.
   await leiteAb(ui, welt)
   expect(welt.fragen[0]?.prompt.endsWith(KURZFORM.replace('2026-10-04', '2026-10-01'))).toBe(true)
-  expect(gespeichert(welt, `${ORDNER}/plan.json`)).toMatchObject({ version: 2, festlegungen: [], aenderungen: { eintraege: [], endziel: null } })
+  expect(gespeichert(welt, `${ORDNER}/plan.json`)).toMatchObject({ version: 3, festlegungen: [], aenderungen: { eintraege: [], endziel: null } })
   expect(await inhalt(ui)).toContain('Seit dem letzten Ableiten: nichts geändert')
 
   await ui.unmount()
@@ -514,7 +514,7 @@ test('leiteAb läuft ohne Engine mit einem schlichten Zugang aus elf Funktionen'
   const schlicht: LaufZugang = {
     sitzung: async () => 'sitzung-1',
     heim: async () => HEIM,
-    repo: async () => ({ root: WURZEL, remote: GITHUB, internal: false, name: null }),
+    repo: async () => ({ root: WURZEL, remote: REMOTE, internal: false, name: null }),
     wurzel: async () => WURZEL,
     jetzt: async () => {
       uhr += 1000
@@ -587,7 +587,7 @@ test('leiteAb läuft ohne Engine mit einem schlichten Zugang aus elf Funktionen'
   expect(fragen[1]?.prompt).toContain('<voriger-plan abgeleitet="2026-10-04">\nzeilen:\n{"id":"grundstock","bahn":"katalog"')
   expect(zweiter).toMatchObject({ ok: true, geladen: { aenderungen: AENDERUNGEN } })
   expect(JSON.parse(dateien.get(`${ORDNER}/plan.json`) ?? 'null')).toMatchObject({
-    version: 2,
+    version: 3,
     festlegungen: ['Der Lasttest kommt erst nach dem großen Umbau.', 'Die Gutscheine gehören zur Kasse, nicht zum Katalog.'],
     aenderungen: AENDERUNGEN,
   })

@@ -286,25 +286,32 @@ const ersterPrompt = async (zugang: ChatZugang): Promise<string> =>
 // ---------- Ticket-Titel ----------
 
 // Die Arbeitskopie des Chats und, wenn er in einem Worktree läuft, die Wurzel des Repos.
-const wurzeln = async (zugang: ChatZugang): Promise<string[]> => {
+export const wurzeln = async (zugang: Pick<ChatZugang, 'repo' | 'wurzel'>): Promise<string[]> => {
   const repo = await zugang.repo()
 
   return [...new Set([await zugang.wurzel(), repo?.root ?? ''])].filter(one => one !== '')
 }
 
-// Das Ticket-System steht nach dem ersten Nachsehen für die Session fest.
+// Welches Ticket-System das Repo nutzt, frisch nachgesehen: die eine Stelle, die das
+// entscheidet. Auch der Plan liest seine Tickets nach ihr.
+export const leseTracker = async (
+  zugang: Pick<ChatZugang, 'repo' | 'wurzel' | 'lies'>,
+): Promise<ZielGraphTracker> => {
+  let datei: string | null = null
+
+  for (const wurzel of await wurzeln(zugang)) {
+    datei ??= await liesText(zugang, `${wurzel}/${TRACKER_DATEI}`)
+  }
+
+  return trackerAus(datei?.split('\n')[0] ?? null, (await zugang.repo())?.remote ?? null)
+}
+
+// Für den Titel eines Tickets steht das Ticket-System nach dem ersten Nachsehen für die
+// Session fest.
 let tracker: ZielGraphTracker | null = null
 
 const findeTracker = async (zugang: ChatZugang): Promise<ZielGraphTracker> => {
-  if (tracker === null) {
-    let datei: string | null = null
-
-    for (const wurzel of await wurzeln(zugang)) {
-      datei ??= await liesText(zugang, `${wurzel}/${TRACKER_DATEI}`)
-    }
-
-    tracker = trackerAus(datei?.split('\n')[0] ?? null, (await zugang.repo())?.remote ?? null)
-  }
+  tracker ??= await leseTracker(zugang)
 
   return tracker
 }

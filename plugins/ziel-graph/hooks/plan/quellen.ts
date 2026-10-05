@@ -2,10 +2,16 @@ import type { FsEntry } from 'claude-code'
 
 import { liesChats, nameVon, schluesselVon } from '../chats'
 import type { ChatZugang, LeseZugang } from '../chats'
+import { mehrzahl } from '../worte'
+
+import { leseTrackerNamen } from './goal'
+import type { TrackerNamen } from './goal'
+import { liesTickets, waehle } from './tickets'
+import type { Ticket, TicketLage } from './tickets'
 
 // Die Quellen eines Laufs: was das Repo über sich weiß. GOAL.md steht an erster Stelle,
-// danach kommen Doku, laufende Chats und Git-Verlauf. Ein Repo mit Tickets bekommt hier
-// später eine weitere Quelle. Kein `$`: register.tsx baut aus `$` einen Zugang und reicht
+// danach kommen die Tickets, wenn das Repo ein Ticket-System hat, die Doku, die laufenden
+// Chats und der Git-Verlauf. Kein `$`: register.tsx baut aus `$` einen Zugang und reicht
 // ihn hierher.
 
 export type QuellenZugang = LeseZugang & Pick<ChatZugang, 'laufe'>
@@ -35,6 +41,16 @@ export type QuellChat = {
   frage: string
 }
 
+// Die Tickets des Repos, so wie ein Lauf sie liest.
+export type QuellTickets = {
+  // was das Ticket-System gerade nennt: jedes gelesene Ticket
+  lage: TicketLage
+  // welche Labels etwas bedeuten: laut GOAL.md, sonst die Vorgabe
+  namen: TrackerNamen
+  // die Tickets, die ans Modell gehen: zusammen höchstens TICKETS_GRENZE Zeichen
+  gesendet: Ticket[]
+}
+
 export type Quellen = {
   // wo gelesen wurde und unter welchem Schlüssel das Repo auf dem Rechner geführt wird
   wurzel: string
@@ -45,6 +61,8 @@ export type Quellen = {
   chats: QuellChat[]
   // je Commit eine Zeile: Datum und Betreff, der neueste zuerst
   commits: string[]
+  // die Tickets aus dem Ticket-System; ohne Angabe hat das Repo keine
+  tickets?: QuellTickets
   // was beim Lesen ausgelassen wurde oder nicht ging
   hinweise: string[]
 }
@@ -252,13 +270,26 @@ export const sammle = async (zugang: QuellenZugang): Promise<Quellen> => {
     hinweise.push(`${GOAL_DATEI} gekürzt: ${DOKU_GRENZE} von ${goal.length} Zeichen.`)
   }
 
+  const gelesen = goal === null ? null : goal.slice(0, DOKU_GRENZE)
+  // Die Tickets: ohne Ticket-System keine, und dafür wird auch nichts aufgerufen.
+  const lage = await liesTickets(zugang)
+  const namen = leseTrackerNamen(gelesen)
+  const { gesendet, ausgelassen } = waehle(lage.liste, namen)
+
+  hinweise.push(...lage.hinweise)
+
+  if (ausgelassen > 0) {
+    hinweise.push(`${mehrzahl(ausgelassen, 'Ticket', 'Tickets')} ausgelassen: Die Grenze für Tickets ist erreicht.`)
+  }
+
   return {
     wurzel,
     schluessel: name,
-    goal: goal === null ? null : goal.slice(0, DOKU_GRENZE),
+    goal: gelesen,
     doku,
     chats,
     commits,
+    tickets: { lage, namen, gesendet },
     hinweise,
   }
 }

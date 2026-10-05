@@ -12,6 +12,7 @@ import type {
 import { alter, nameVon } from '../chats'
 import { MODELL } from '../fest'
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
+import { neueTicketsZeile } from '../plan/frisch'
 import {
   aenderungsListe,
   aenderungsZeile,
@@ -540,6 +541,8 @@ export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten
   const { Box, Text, Button } = teile
   const { stand, laufend, wahl } = lage
   const plan = stand.plan ?? LEERER_PLAN
+  // Offene Tickets, die es beim letzten Ableiten noch nicht gab: Sie stehen in keinem Bündel.
+  const neue = neueTicketsZeile(stand.neueTickets)
   const bild = sicht(plan, laufend, wahl.wahl, stand.aenderungen)
   const flaeche =
     stand.plan === null || teile.Svg === null ? null : baueFlaeche(bild, { zellen: lage.zellen, farben: wahl.farben })
@@ -579,6 +582,7 @@ export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten
               {faktenZeile(stand.fakten, laufend.gelesen || stand.gelesen)}
             </Text>
           )}
+          {neue !== '' && <Text wrap="wrap">{neue}</Text>}
         </Box>
       )}
 

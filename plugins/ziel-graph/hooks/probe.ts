@@ -14,7 +14,7 @@ import { graphDaten } from './graph/zeilen'
 import { sicht as kartenSicht } from './karten/karten'
 import { baueFlaeche, vorschau, wunschZellen } from './karten/zeichnen'
 import type { Bild as KartenBild } from './karten/zeichnen'
-import { leseGespeichert, planAus } from './plan/lauf'
+import { leseGespeichert, zeige } from './plan/lauf'
 
 // Zum Prüfen ohne die App: aus dem Text einer gespeicherten Plan-Datei (plan.json) dieselben
 // Bilder, die die zwei Ansichten daraus bauen, als reine Funktionen. Der Mod selbst braucht
@@ -48,7 +48,9 @@ export type ProbePlan = {
 }
 
 // Der Plan aus dem Text einer Plan-Datei, so wie ihn beide Ansichten nach „Neu laden“
-// zeigen. null: Die Datei ist keine Plan-Datei oder ergibt keinen Plan.
+// zeigen, wenn sich das Ticket-System nicht fragen lässt: mit dem Stand der Tickets, den die
+// Datei sich beim Ableiten gemerkt hat. null: Die Datei ist keine Plan-Datei oder ergibt
+// keinen Plan.
 export const lesePlan = (json: string, wahl: ProbeWahl = {}): ProbePlan | null => {
   const gespeichert = leseGespeichert(json)
 
@@ -56,7 +58,7 @@ export const lesePlan = (json: string, wahl: ProbeWahl = {}): ProbePlan | null =
     return null
   }
 
-  const ableitung = planAus(gespeichert, wahl.goal === undefined ? gespeichert.goal : wahl.goal)
+  const { ableitung } = zeige(gespeichert, wahl.goal === undefined ? gespeichert.goal : wahl.goal, null)
   const laufende: readonly ProbeChat[] = wahl.chats ?? gespeichert.umfeld.chats
 
   return ableitung.ok

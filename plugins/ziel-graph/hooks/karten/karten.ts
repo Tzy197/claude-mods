@@ -11,7 +11,19 @@ import type {
 import { nameVon } from '../chats'
 import { ENDZIEL } from '../fest'
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
-import { STAND_WORT, aenderungsMarke, endzielZeile, laufende, mitMarke, schrittMeta, zielTitel } from '../plan/lesen'
+import {
+  STAND_WORT,
+  aenderungsMarke,
+  endzielZeile,
+  laufende,
+  mitFortschritt,
+  mitMarke,
+  punkteOhneTickets,
+  schrittMeta,
+  ticketPunkte,
+  zielTitel,
+} from '../plan/lesen'
+import { ticketName } from '../plan/tickets'
 import { mehrzahl } from '../worte'
 
 // Aus dem einen Plan und den laufenden Chats werden Karten: was die Fläche zeigt, was die
@@ -89,11 +101,14 @@ export const zeichenText = (karte: Karte): string => ZEICHEN_TEXT[karte.zeichen]
 export const chatMarke = (karte: Karte): string =>
   karte.chat === '' ? '' : karte.chat === 'wartet' ? 'Chat wartet auf dich' : 'Chat läuft'
 
-// Die zweite Zeile einer Karte: worauf sie wartet, sonst ihr Fortschritt.
+// Die zweite Zeile einer Karte: worauf sie wartet, sonst ihr Fortschritt. Mit Tickets steht
+// der Fortschritt in beiden Fällen da.
 const metaVon = (plan: ZielGraphPlan, eines: ZielGraphBuendel): string => {
   const ziel = zielTitel(plan, eines.wartetAuf)
   const grund =
-    ziel === '' || (eines.stand === 'teilweise' && eines.meta !== '') ? eines.meta : `wartet auf: ${ziel}`
+    ziel === '' || (eines.stand === 'teilweise' && eines.meta !== '')
+      ? eines.meta
+      : mitFortschritt(eines, `wartet auf: ${ziel}`)
 
   return eines.vermutet && !/vermutet/i.test(grund)
     ? grund === ''
@@ -299,9 +314,11 @@ const quellenZeile = (quelle: string): string =>
     ? 'Quelle: laufende Chats'
     : quelle === 'commits'
       ? 'Quelle: Git-Verlauf'
-      : quelle === ''
-        ? 'Quelle: nicht genannt'
-        : `Quelle: ${quelle}`
+      : quelle === 'tickets'
+        ? 'Quelle: Tickets'
+        : quelle === ''
+          ? 'Quelle: nicht genannt'
+          : `Quelle: ${quelle}`
 
 const zielZeile = (strang: ZielGraphStrang | undefined): string =>
   strang === undefined || strang.ziel === ''
@@ -328,7 +345,9 @@ export const detail = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string)
       zeilen: [
         { art: 'leise' as const, text: [STAND_WORT[eines.stand], eines.meta].filter(one => one !== '').join(' · ') },
         { art: 'leise' as const, text: zielZeile(strang) },
-        ...eines.punkte.map(one => ({ art: 'punkt' as const, text: one })),
+        // Mit Tickets: je Ticket eine Zeile mit Nummer, Titel und ob es geschlossen ist.
+        ...ticketPunkte(eines).map(one => ({ art: 'punkt' as const, text: one })),
+        ...punkteOhneTickets(eines).map(one => ({ art: 'punkt' as const, text: one })),
         { art: 'leise' as const, text: quellenZeile(eines.quelle) },
         { art: 'text' as const, text: ziel === '' ? '' : `Wartet auf: ${ziel}` },
         {
@@ -424,10 +443,15 @@ export const detail = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string)
 
 // ---------- Die Aufträge an den Chat ----------
 
-// Was der Chat über ein Bündel wissen muss: Strang und dessen Ziel, Titel, Punkte, Quelle.
+// Was der Chat über ein Bündel wissen muss: Strang und dessen Ziel, Titel, Tickets, Punkte,
+// Quelle.
 const steckbrief = (plan: ZielGraphPlan, eines: ZielGraphBuendel): string => {
   const strang = plan.straenge.find(one => one.id === eines.strang)
   const ziel = zielTitel(plan, eines.wartetAuf)
+  const tickets = (eines.tickets ?? []).map(
+    one => `- ${ticketName(one.schluessel)} ${one.titel} (${one.zu ? 'geschlossen' : one.grund === 'blockiert' ? 'offen, blockiert' : one.grund === 'auskunft' ? 'offen, wartet auf Auskunft' : 'offen'})`,
+  )
+  const punkte = punkteOhneTickets(eines)
 
   return [
     `Strang: ${strang?.name ?? eines.strang}`,
@@ -437,9 +461,10 @@ const steckbrief = (plan: ZielGraphPlan, eines: ZielGraphBuendel): string => {
     plan.endziel.herkunft === 'goal' ? `Endziel: ${plan.endziel.text}` : '',
     `Schritt: ${eines.titel}`,
     `Stand: ${[STAND_WORT[eines.stand], eines.meta].filter(one => one !== '').join(' · ')}`,
-    eines.punkte.length === 0 ? '' : `Dazu gehört:\n${eines.punkte.map(one => `- ${one}`).join('\n')}`,
+    tickets.length === 0 ? '' : `Die Tickets dazu:\n${tickets.join('\n')}`,
+    punkte.length === 0 ? '' : `Dazu gehört:\n${punkte.map(one => `- ${one}`).join('\n')}`,
     ziel === '' ? '' : `Wartet zum Teil auf: ${ziel}`,
-    eines.quelle === '' || eines.quelle === 'chats' || eines.quelle === 'commits'
+    eines.quelle === '' || eines.quelle === 'chats' || eines.quelle === 'commits' || eines.quelle === 'tickets'
       ? quellenZeile(eines.quelle)
       : `Quelle: ${eines.quelle} (dort steht, was gemeint ist)`,
   ]

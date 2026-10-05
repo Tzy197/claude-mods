@@ -2,7 +2,8 @@ import { eindeutig, kennung } from '../worte'
 
 // GOAL.md: der Anker des Plans. Die Datei liegt in der Wurzel des Repos und nennt das
 // Endziel, die Zwischenziele auf dem Weg, je Strang das größere Ziel und die Festlegungen
-// des Nutzers. Hier wird sie nur gelesen: Schreiben tut sie der Chat, auf Zuruf des Nutzers.
+// des Nutzers. Dazu darf sie sagen, welche Labels des Ticket-Systems etwas bedeuten. Hier
+// wird sie nur gelesen: Schreiben tut sie der Chat, auf Zuruf des Nutzers.
 // Kein `$`, kein Zustand.
 
 export type GoalZwischenziel = {
@@ -41,6 +42,19 @@ export type Goal = {
   hinweise: string[]
 }
 
+// Welche Labels des Ticket-Systems etwas bedeuten, so wie GOAL.md sie im Abschnitt
+// „Tracker“ nennt. Der Abschnitt ist freiwillig: Eine leere Liste heißt, dass die Vorgabe gilt.
+export type TrackerNamen = {
+  // die Labels, mit denen ein Ticket blockiert ist
+  blockiert: string[]
+  // die Labels, mit denen ein Ticket auf eine Auskunft von außen wartet
+  auskunft: string[]
+  // womit die Labels beginnen, die einen Bereich nennen: „bereich:“ für „bereich:kasse“
+  bereich: string[]
+}
+
+export const KEINE_NAMEN: TrackerNamen = { blockiert: [], auskunft: [], bereich: [] }
+
 // Das Format, so wie es der Chat beim Anlegen bekommt und docs/orchestrator.md es zeigt.
 export const GOAL_FORMAT = `# Ziel
 
@@ -62,7 +76,7 @@ Gehört zu: <eines der Zwischenziele, wenn es passt>
 // Kennungen, die im Plan schon etwas anderes bedeuten.
 const VERGEBEN = ['endziel', 'stamm', 'alle', 'treffpunkt']
 
-type Teil = 'kein' | 'endziel' | 'zwischen' | 'straenge' | 'fest'
+type Teil = 'kein' | 'endziel' | 'zwischen' | 'straenge' | 'fest' | 'tracker'
 
 // Fett, Unterstrichen und Code-Zeichen fallen weg, Leerraum wird zu einem Leerzeichen.
 const glatt = (wert: string): string =>
@@ -94,7 +108,7 @@ export const satzSchluessel = (satz: string): string =>
     .toLowerCase()
     .replace(/[\s.!]+$/, '')
 
-// Welcher Abschnitt mit dieser Überschrift beginnt; null, wenn es keiner der vier ist.
+// Welcher Abschnitt mit dieser Überschrift beginnt; null, wenn es keiner der fünf ist.
 const teilVon = (titel: string): Exclude<Teil, 'kein'> | null => {
   const name = kennung(titel.split(/[:：]/)[0] ?? '')
 
@@ -110,21 +124,41 @@ const teilVon = (titel: string): Exclude<Teil, 'kein'> | null => {
     return 'fest'
   }
 
+  if (/^(tracker|ticket-system|ticketsystem|tickets|labels?)(-|$)/.test(name)) {
+    return 'tracker'
+  }
+
   return /^(straenge|strang|bahnen|bahn)(-|$)/.test(name) ? 'straenge' : null
 }
 
 const LISTE = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/
 const FELD = /^(ziel|geh(?:ö|oe)rt\s+zu|teil\s+von)\s*[:：]\s*(.*)$/i
+// Die Zeilen des Abschnitts „Tracker“: „Blockiert: <Label>“, „Wartet auf Auskunft: <Label>“
+// und „Bereich: <Präfix>“, je auch in der Mehrzahl und auf Englisch.
+const TRACKER_FELD =
+  /^(blockiert|blockade|blocked|wartet(?:\s+auf\s+(?:eine\s+)?auskunft)?|auskunft|needs[\s-]?info|bereiche?|bereichs-?labels?|area)\s*[:：]\s*(.*)$/i
+
+// Die Labels hinter dem Doppelpunkt: durch Komma oder Semikolon getrennt, ohne Anführungszeichen.
+const labelsAus = (wert: string): string[] =>
+  wert
+    .split(/[,;]/)
+    .map(one => glatt(one).replace(/^[„"“'‚‘]+|[“"”'‘’]+$/g, ''))
+    .filter(one => !istOffen(one))
 
 type RohStrang = { name: string; ziel: string; gehoertZuText: string; ausListe: boolean }
 
-// Liest GOAL.md. Die Datei darf unvollständig sein: Was fehlt oder „noch offen“ ist, bleibt
-// leer. null heißt: Es gibt keine Datei.
-export const leseGoal = (roh: string | null): Goal => {
+// Liest GOAL.md in einem Durchgang: die Ziele und, getrennt davon, was der Abschnitt
+// „Tracker“ über die Labels sagt. Die Datei darf unvollständig sein: Was fehlt oder „noch
+// offen“ ist, bleibt leer. null heißt: Es gibt keine Datei.
+const zerlege = (roh: string | null): { goal: Goal; tracker: TrackerNamen } => {
   const hinweise: string[] = []
+  const tracker: TrackerNamen = { blockiert: [], auskunft: [], bereich: [] }
 
   if (roh === null) {
-    return { vorhanden: false, endziel: '', zwischenziele: [], straenge: [], festlegungen: [], hinweise }
+    return {
+      goal: { vorhanden: false, endziel: '', zwischenziele: [], straenge: [], festlegungen: [], hinweise },
+      tracker,
+    }
   }
 
   const zeilen = roh
@@ -241,6 +275,22 @@ export const leseGoal = (roh: string | null): Goal => {
         if (inListe === null && inhalt !== '') {
           loseSaetze.push(inhalt)
         }
+      }
+
+      continue
+    }
+
+    if (teil === 'tracker') {
+      const genannt = TRACKER_FELD.exec(inhalt)
+      const art = (genannt?.[1] ?? '').toLowerCase()
+      const liste = /^(blockiert|blockade|blocked)$/.test(art)
+        ? tracker.blockiert
+        : /^(bereich|area)/.test(art)
+          ? tracker.bereich
+          : tracker.auskunft
+
+      if (genannt !== null) {
+        liste.push(...labelsAus(genannt[2] ?? '').filter(one => !liste.includes(one)))
       }
 
       continue
@@ -371,14 +421,24 @@ export const leseGoal = (roh: string | null): Goal => {
   const satz = glatt(endziel.join(' '))
 
   return {
-    vorhanden: true,
-    endziel: istOffen(satz) ? '' : satz,
-    zwischenziele,
-    straenge: fertig,
-    festlegungen,
-    hinweise,
+    goal: {
+      vorhanden: true,
+      endziel: istOffen(satz) ? '' : satz,
+      zwischenziele,
+      straenge: fertig,
+      festlegungen,
+      hinweise,
+    },
+    tracker,
   }
 }
+
+// GOAL.md, so weit sie Ziele nennt: Endziel, Zwischenziele, Stränge und Festlegungen.
+export const leseGoal = (roh: string | null): Goal => zerlege(roh).goal
+
+// Was GOAL.md im Abschnitt „Tracker“ über die Labels des Ticket-Systems sagt. Ohne Datei
+// und ohne Abschnitt ist jede Liste leer: Dann gelten die Vorgaben.
+export const leseTrackerNamen = (roh: string | null): TrackerNamen => zerlege(roh).tracker
 
 // true: Die Datei ist da, sagt aber noch nichts über Ziele: kein Endziel, kein Zwischenziel,
 // kein Strang. Festlegungen allein ändern daran nichts: Auch dann ist alles über Ziele nur

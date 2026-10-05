@@ -20,6 +20,7 @@ export const NICHTS_GELADEN: ZielGraphGeladen = {
   goal: { vorhanden: true, leer: false, geaendert: false },
   festlegungen: { liste: [], geaendert: false },
   aenderungen: null,
+  neueTickets: 0,
   gelesen: 0,
 }
 

@@ -4,6 +4,7 @@ import { GOAL, antwort, antwortOhneGoal } from './shop'
 import {
   GRAPH,
   ORDNER,
+  SCHLUESSEL,
   SURFACES,
   VERBRAUCH,
   WURZEL,
@@ -223,7 +224,7 @@ test('läuft die Session in einem Unterordner ohne Doku, gilt die Wurzel des Rep
   await leiteAb(ui, welt)
 
   expect(gespeichert(welt, `${ORDNER}/letzter.json`)).toMatchObject({
-    quellen: { wurzel: WURZEL, schluessel: 'github.com+beispiel+shop', chats: [{ name: 'Warenkorb-Regeln' }] },
+    quellen: { wurzel: WURZEL, schluessel: SCHLUESSEL, chats: [{ name: 'Warenkorb-Regeln' }] },
   })
   expect(welt.fragen[0]?.prompt).toContain(`<goal datei="GOAL.md">\n${GOAL.trim()}\n</goal>`)
   expect(welt.fragen[0]?.prompt).toContain('<doku datei="docs/plan/suche.md">')

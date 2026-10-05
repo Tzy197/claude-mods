@@ -5,6 +5,7 @@ import type { FsEntry, ModelCompleteResult, On, RenderSurface, SessionSendResult
 import { AUFTRAG } from '../hooks/plan/ableiten'
 
 import { GOAL, antwort } from './shop'
+import type { ShopTicket } from './shop'
 
 // Die Welt unter dem Mod: Dateien, Befehle, Modell, Uhr und Session kommen aus dem Speicher
 // des Tests. Kein echtes Heimverzeichnis, kein Netz. Was ein Test an der Welt ändert, gilt
@@ -36,9 +37,16 @@ export const WURZEL = '/arbeit/shop'
 // 2026-10-04 12:00:00 UTC
 export const JETZT = 1_791_115_200_000
 export const TAG = 24 * 60 * 60_000
+// Der Shop liegt auf einem eigenen Git-Server, der kein Ticket-System verrät: So läuft der
+// Mod in den meisten Tests ganz ohne Tickets und ruft dafür auch nichts auf.
+export const REMOTE = 'git@git.example.org:beispiel/shop.git'
+export const SCHLUESSEL = 'git.example.org+beispiel+shop'
+// Derselbe Shop bei GitHub und bei GitLab: Dort liest der Mod Tickets über `gh` und `glab`.
 export const GITHUB = 'git@github.com:beispiel/shop.git'
+export const GITLAB = 'git@gitlab.example.org:beispiel/shop.git'
 // Direkt im Ordner des Repos liegen die Stände der Chats, darunter Plan und Läufe.
-export const CHATS = `${HEIM}/.claude/ziel-graph/github.com+beispiel+shop`
+export const ordnerVon = (schluessel: string): string => `${HEIM}/.claude/ziel-graph/${schluessel}`
+export const CHATS = ordnerVon(SCHLUESSEL)
 export const ORDNER = `${CHATS}/plan`
 export const VERBRAUCH = { input_tokens: 9000, output_tokens: 1800, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 }
 export const COMMITS = Array.from({ length: 30 }, (_, n) => `2026-09-${String(30 - n).padStart(2, '0')} Katalog: Schritt ${30 - n}`)
@@ -68,12 +76,15 @@ export type Vorgabe = {
   zustellung: SessionSendResult
   // true: Der Rechner lässt keine Datei schreiben
   istNurLesbar: boolean
+  // was `gh` und `glab` antworten: je Aufruf die Ausgabe, oder ein Fehler mit seinem Text.
+  // null: Auf dem Rechner gibt es keines der zwei Werkzeuge.
+  werkzeug: ((argv: readonly string[]) => string | { fehler: string }) | null
 }
 
 export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
   const uhr = mock.clock(on, { now: JETZT })
   const welt = {
-    remote: GITHUB as string | null | undefined,
+    remote: REMOTE as string | null | undefined,
     commits: COMMITS as string[] | null,
     branch: 'main',
     modell: { isAnswered: true, text: antwort(), usage: VERBRAUCH } as ModelCompleteResult,
@@ -86,6 +97,7 @@ export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
     entwurf: '',
     zustellung: { isDelivered: true } as SessionSendResult,
     istNurLesbar: false,
+    werkzeug: null as Vorgabe['werkzeug'],
     ...vorgabe,
     uhr,
     dateien: new Map<string, string>(),
@@ -149,6 +161,21 @@ export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
     const [name = '', befehl = ''] = e.argv
 
     welt.laeufe.push(e.argv.join(' '))
+
+    if (name !== 'git' && welt.werkzeug !== null) {
+      const ausgabe = welt.werkzeug(e.argv)
+      const istFehler = typeof ausgabe !== 'string'
+
+      return {
+        value: {
+          exitCode: istFehler ? 1 : 0,
+          stdout: istFehler ? '' : ausgabe,
+          stderr: istFehler ? ausgabe.fehler : '',
+          isStdoutTruncated: false,
+          isStderrTruncated: false,
+        },
+      }
+    }
 
     return name !== 'git' || welt.commits === null
       ? { deny: `${name}: Befehl nicht gefunden` }
@@ -235,6 +262,13 @@ export const baue = (on: On, vorgabe: Partial<Vorgabe> = {}) => {
 }
 
 export type Welt = ReturnType<typeof baue>
+
+// Das Ticket-System des Shops, wie `gh` und `glab` es ausgeben: `tickets` nennt, was dort
+// gerade steht. Ein Test, der das Ticket ändert, sieht es beim nächsten Aufruf.
+export const mitTickets =
+  (tickets: () => readonly ShopTicket[], gib: (tickets: readonly ShopTicket[], zu: boolean) => string) =>
+  (argv: readonly string[]): string =>
+    gib(tickets(), argv.join(' ').includes('closed'))
 
 // Das Repo des erfundenen Shops: fünf Markdown-Dateien, davon eine in einem Unterordner,
 // und daneben Dateien, die nicht zur Doku zählen.

@@ -9,10 +9,11 @@ import { SVG_GRENZE, baueFlaeche } from '../hooks/karten/zeichnen'
 import { CHAT, GOAL, LAUFEND, QUELLEN, STAMM_OHNE_GOAL, ZEILEN, antwort, gelungen } from './shop'
 import {
   BREIT,
-  GITHUB,
   HEIM,
   JETZT,
   ORDNER,
+  REMOTE,
+  SCHLUESSEL,
   SURFACES,
   VERBRAUCH,
   WURZEL,
@@ -190,7 +191,7 @@ for (const surface of SURFACES) {
       usage: VERBRAUCH,
       quellen: {
         wurzel: WURZEL,
-        schluessel: 'github.com+beispiel+shop',
+        schluessel: SCHLUESSEL,
         goal: { zeichen: GOAL.length },
         chats: [{ kennung: 'c1', id: 'sitzung-7', name: 'Warenkorb-Regeln', wartet: true }],
         commits: { anzahl: 30 },
@@ -204,7 +205,7 @@ for (const surface of SURFACES) {
     const plan = gespeichert(welt, `${ORDNER}/plan.json`)
 
     expect(plan).toMatchObject({
-      version: 2,
+      version: 3,
       fakten: { zeit: JETZT, dauerMs: 23_000, modellMs: 23_000, dateien: 5, chats: 1, commits: 30, modell: 'claude-sonnet-5-5', datei: `${ORDNER}/plan.json` },
       antwort: antwort(),
       umfeld: { chats: [CHAT], quellen: QUELLEN },
@@ -621,7 +622,7 @@ test('ohne git, ohne Doku, ohne Chats und ohne Repo läuft der Lauf trotzdem; im
   expect(karg.meldungen).toHaveLength(0)
 
   // Jetzt ein Worktree: Die Session läuft daneben, GOAL.md und die Chats liegen beim Repo.
-  karg.remote = GITHUB
+  karg.remote = REMOTE
   karg.ordner = '/arbeit/shop-worktrees/kasse'
   karg.dateien.set(`${WURZEL}/GOAL.md`, GOAL)
   karg.dateien.set(`${WURZEL}/README.md`, '# Shop\n')

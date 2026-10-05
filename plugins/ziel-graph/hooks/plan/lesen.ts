@@ -18,12 +18,14 @@ import { alter } from '../chats'
 import { kennung, mehrzahl, sekunden } from '../worte'
 
 import { ZONEN_NAME } from './ableiten'
+import { fortschritt } from './frisch'
 import { promptEndziel, promptFestlegungen, promptGoalAnlegen, promptStrangZiel } from './goal'
 import type { StrangFrage } from './goal'
+import { TRACKER_NAME, ticketName } from './tickets'
 
 // Was beide Ansichten aus dem einen Plan lesen, in denselben Worten: das Endziel als Zeile,
-// die Eckdaten des Laufs, die Chats an einem Bündel, die Festlegungen, was der letzte Lauf
-// geändert hat, und die Aufträge zu GOAL.md. Kein `$`.
+// die Eckdaten des Laufs, die Chats und die Tickets an einem Bündel, die Festlegungen, was
+// der letzte Lauf geändert hat, und die Aufträge zu GOAL.md. Kein `$`.
 
 // Das Endziel als eine Zeile, so wie es über dem Plan, im Graphen und auf seiner Karte steht.
 export const endzielZeile = (plan: ZielGraphPlan): string =>
@@ -33,10 +35,22 @@ export const endzielZeile = (plan: ZielGraphPlan): string =>
       ? `Endziel (vermutet): ${plan.endziel.text}`
       : 'Endziel: nicht festgelegt'
 
-export const faktenZeile = (fakten: ZielGraphFakten, jetzt: number): string =>
-  `Abgeleitet ${alter(jetzt, fakten.zeit)} in ${sekunden(fakten.dauerMs)} s aus ` +
-  `${mehrzahl(fakten.dateien, 'Datei', 'Dateien')}, ${mehrzahl(fakten.chats, 'Chat', 'Chats')} und ` +
-  `${mehrzahl(fakten.commits, 'Commit', 'Commits')} · ${fakten.modell}`
+// Die Eckdaten eines Laufs. Hat das Repo ein Ticket-System, nennt die Zeile es und die Zahl
+// der Tickets, die der Lauf dort gelesen hat. Ein Plan von vor Version 0.5.0 kennt keines.
+export const faktenZeile = (fakten: ZielGraphFakten, jetzt: number): string => {
+  const tracker = fakten.tracker ?? 'keine'
+  const quellen = [
+    mehrzahl(fakten.dateien, 'Datei', 'Dateien'),
+    mehrzahl(fakten.chats, 'Chat', 'Chats'),
+    mehrzahl(fakten.commits, 'Commit', 'Commits'),
+    ...(tracker === 'keine' ? [] : [`${mehrzahl(fakten.tickets ?? 0, 'Ticket', 'Tickets')} (${TRACKER_NAME[tracker]})`]),
+  ]
+
+  return (
+    `Abgeleitet ${alter(jetzt, fakten.zeit)} in ${sekunden(fakten.dauerMs)} s aus ` +
+    `${quellen.slice(0, -1).join(', ')} und ${quellen.at(-1) ?? ''} · ${fakten.modell}`
+  )
+}
 
 // Wo der Lauf steht, als die eine Zeile, die beide Ansichten zuerst zeigen; '' wenn er ruht.
 export const laufZeile = (lauf: ZielGraphLauf): string =>
@@ -56,6 +70,35 @@ export const zielTitel = (plan: ZielGraphPlan, id: string): string =>
 // ob sie noch da sind und ob sie warten, sagen die Dateien der Chats.
 export const laufende = (eines: ZielGraphBuendel, chats: ZielGraphChats): ZielGraphChat[] =>
   chats.chats.filter(one => eines.chats.includes(one.id))
+
+// ---------- Die Tickets eines Bündels ----------
+
+// Die Tickets eines Bündels, je eines als Zeile mit Nummer, Titel und davor, ob es
+// geschlossen ist: „✓ #14 Gutschein an der Kasse prüfen“, „○ #15 Restbetrag merken“,
+// „· #16 Rechnung als PDF (blockiert)“.
+export const ticketPunkte = (eines: Pick<ZielGraphBuendel, 'tickets'>): string[] =>
+  (eines.tickets ?? []).map(one => {
+    const zeichen = one.zu ? '✓' : one.grund === '' ? '○' : '·'
+    const grund = one.zu || one.grund === '' ? '' : one.grund === 'blockiert' ? ' (blockiert)' : ' (wartet auf Auskunft)'
+
+    return `${zeichen} ${ticketName(one.schluessel)} ${one.titel}${grund}`
+  })
+
+// Die Punkte eines Bündels, die kein Ticket wiederholen: Mit Tickets nennt das Modell sie
+// dort mit Nummer und Titel, und die Liste der Tickets sagt dasselbe frischer.
+export const punkteOhneTickets = (eines: Pick<ZielGraphBuendel, 'punkte' | 'tickets'>): string[] => {
+  const namen = (eines.tickets ?? []).map(one => ticketName(one.schluessel).toLowerCase())
+
+  return eines.punkte.filter(punkt => {
+    const anfang = punkt.trim().toLowerCase()
+
+    return !namen.some(name => anfang.startsWith(name) && !/^\d/.test(anfang.slice(name.length)))
+  })
+}
+
+// Die zweite Zeile eines Bündels, das auf etwas wartet: Mit Tickets steht der Fortschritt davor.
+export const mitFortschritt = (eines: Pick<ZielGraphBuendel, 'tickets'>, grund: string): string =>
+  [fortschritt(eines), grund].filter(one => one !== '').join(' · ')
 
 // Die Stränge, für die kein Ziel festgelegt ist.
 export const ohneZiel = (plan: ZielGraphPlan): ZielGraphStrang[] => plan.straenge.filter(one => one.ziel === '')

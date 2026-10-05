@@ -1,6 +1,6 @@
 # Orchestrator
 
-Stand: 2026-10-05, Version 0.4.0. Seit Version 0.3.0 ist der Orchestrator kein eigener Mod mehr, sondern die breite Ansicht des Mods `ziel-graph`. Seit Version 0.4.0 gibt es Festlegungen, der Plan wird von Lauf zu Lauf fortgeschrieben, und beide Ansichten sagen, was ein Lauf geändert hat. Gebaut und mit `validate`, den Tests des Mods und der Typprüfung geprüft. In der echten App noch nicht angesehen.
+Stand: 2026-10-05, Version 0.5.0. Seit Version 0.3.0 ist der Orchestrator kein eigener Mod mehr, sondern die breite Ansicht des Mods `ziel-graph`. Seit Version 0.4.0 gibt es Festlegungen, der Plan wird von Lauf zu Lauf fortgeschrieben, und beide Ansichten sagen, was ein Lauf geändert hat. Seit Version 0.5.0 sind die Tickets des Repos eine Quelle: aus GitHub, aus GitLab oder als Markdown-Dateien, und ihr Stand kommt bei jedem Laden frisch, ohne Modell-Aufruf. Gebaut und mit `validate`, den Tests des Mods und der Typprüfung geprüft. In der echten App und an einem echten Ticket-System noch nicht angesehen.
 
 ## Zweck
 
@@ -26,7 +26,7 @@ Die Fläche zeigt den Plan des Repos als Prozesskarten:
 | --- | --- |
 | Fläche öffnen | `/orchestrator`. Die Leiste wünscht sich eine große Breite; breiter ziehen kann sie nur der Nutzer. Der letzte gespeicherte Plan des Repos wird geladen. |
 | Plan ableiten | Knopf „Neu ableiten“, hier oder in `/graph`. Ein Modell-Aufruf mit `claude-sonnet-5-5`, etwa 30 Sekunden. Beide Leisten zählen mit, das Ende kommt als Hinweis. Läuft schon ein Lauf, startet kein zweiter. Abgeleitet wird nur per Knopf. |
-| Neu lesen | Knopf „Neu laden“: der gespeicherte Plan, GOAL.md und die Chats. Kein Modell-Aufruf. |
+| Neu lesen | Knopf „Neu laden“: der gespeicherte Plan, GOAL.md, die Chats und der Stand der Tickets. Kein Modell-Aufruf. |
 | Karte wählen | Knopf „›“ an der Karte. Ohne Wahl gilt die erste Karte, an der ein anderer Chat auf den Nutzer wartet. |
 | Arbeit beginnen | In der Detail-Fläche einer Karte aus „Jetzt möglich“: „Auftrag ins Eingabefeld legen“. Der Auftrag nennt Strang und dessen Ziel, Titel, Punkte und Quelle. Abschicken tut ihn der Nutzer. |
 | Schritt verstehen | „Erklären lassen“ legt die Bitte ins Eingabefeld, den Schritt mit einem kleinen Bild zu erklären. |
@@ -110,6 +110,7 @@ Die Datei darf unvollständig und eigenwillig geschrieben sein.
 - **Stränge:** jede Überschrift unter „Stränge“ ist ein Strang. Die Reihenfolge der Datei ist die Reihenfolge der Spalten. Eine Liste statt Überschriften geht auch: `- Kasse: Bestellen ohne Umweg`.
 - **Felder eines Strangs:** `Ziel:` und `Gehört zu:`, auch als Listenpunkt oder fett. „Gehört zu“ muss eines der Zwischenziele nennen; sonst steht ein Hinweis in der Fläche.
 - **Festlegungen:** je Listenpunkt ein Satz, wörtlich. Die Zeile gleich darunter setzt einen langen Satz fort; ein eingerückter Listenpunkt ist Erläuterung und zählt nicht. Ohne Liste zählt jede Zeile. Steht derselbe Satz zweimal da, gilt er einmal, und die Fläche sagt es. Nur tiefer als „Stränge“ und unter ihr darf die Überschrift nicht stehen: Dort ist jede Überschrift ein Strang.
+- **Tracker:** ein freiwilliger Abschnitt „Tracker“ (auch „Ticket-System“, „Tickets“ oder „Labels“), der sagt, welche Labels etwas bedeuten. Siehe „Tickets“ weiter unten. Über Ziele sagt er nichts.
 - **Offen** heißt: leer, „noch offen“, „offen“, „unklar“, „?“, „–“, „tbd“ oder ein stehen gebliebener Platzhalter in spitzen Klammern.
 - Kommentare (`<!-- … -->`) und Code-Blöcke zählen nicht.
 - **Im Worktree** zählt zuerst die GOAL.md des Worktrees, sonst die der Haupt-Wurzel.
@@ -156,11 +157,108 @@ Zwei Läufe über dasselbe Repo ergaben früher zwei verschiedene Bilder: andere
 
 ## Woraus abgeleitet wird
 
-Ein Lauf liest GOAL.md, die Festlegungen, `README.md`, `CLAUDE.md`, jede Markdown-Datei unter `docs/`, die laufenden Chats, die letzten 30 Commits und den vorigen Plan. Tickets liest er noch nicht. Der Mod setzt kein Ticket-System voraus und läuft auch ohne Git und ohne Repo.
+Ein Lauf liest GOAL.md, die Festlegungen, die Tickets des Repos, `README.md`, `CLAUDE.md`, jede Markdown-Datei unter `docs/`, die laufenden Chats, die letzten 30 Commits und den vorigen Plan. Der Mod setzt kein Ticket-System voraus und läuft auch ohne Git und ohne Repo: Ohne Tickets ist alles wie vor Version 0.5.0.
 
-Die Doku ist gedeckelt: Von jeder Datei gehen höchstens 24.000 Zeichen ans Modell, von allen zusammen höchstens 96.000. Was gekürzt oder ausgelassen wurde, steht als Hinweis in der Fläche.
+Die Doku ist gedeckelt: Von jeder Datei gehen höchstens 24.000 Zeichen ans Modell, von allen zusammen höchstens 96.000. Die Tickets sind es auch, siehe unten. Was gekürzt oder ausgelassen wurde, steht als Hinweis in der Fläche.
 
 Das Modell antwortet mit einem JSON. Der Mod räumt es auf: Was nicht passt, lässt er weg oder repariert es, und jede Reparatur steht als Hinweis in der Fläche. Die schmale Ansicht nennt nur die Zahl der Hinweise.
+
+## Tickets
+
+Hat das Repo ein Ticket-System, steht sein wirklicher Stand dort. Der Mod liest ihn, setzt ihn aber nie voraus.
+
+### Welches Ticket-System
+
+Das entscheidet eine Stelle, dieselbe, die auch den Titel eines Tickets für einen Chat nachschlägt (`trackerAus` in `hooks/chats.ts`): zuerst die erste Zeile von `docs/agents/issue-tracker.md` (`# Issue tracker: GitHub`, `GitLab` oder `Local Markdown`), sonst der Host von `origin`. Passt nichts, gibt es keine Tickets, und es wird nichts aufgerufen.
+
+Wer ein Repo bei GitHub oder GitLab hat, dessen Tickets aber nicht nutzt, schreibt in `docs/agents/issue-tracker.md` eine erste Zeile, die keines der drei nennt, zum Beispiel `# Issue tracker: keines`.
+
+### Was gelesen wird
+
+| Ticket-System | Aufruf, je ohne Shell und nur lesend |
+| --- | --- |
+| GitHub | `gh issue list --state open --limit 100 --json number,title,state,labels,assignees,milestone,updatedAt,body`, danach `gh issue list --state closed --limit 30 --json number,title,state,closedAt,labels` |
+| GitLab | `glab api projects/:id/issues?state=opened&per_page=100`, danach `glab api projects/:id/issues?state=closed&order_by=updated_at&per_page=30` |
+| Markdown | kein Aufruf: die Dateien `.scratch/<vorhaben>/issues/<NN>-<name>.md`, erst in der Arbeitskopie der Session, sonst in der Wurzel des Repos |
+
+- **Je Ticket** merkt sich der Mod: Nummer, Titel, offen oder geschlossen, Labels, wem es zugewiesen ist, den Meilenstein, einen Auszug des Textes (höchstens 160 Zeichen, nur bei offenen), was der Text als Blockade nennt („Blocked by: …“) und den Tag, an dem es geschlossen wurde.
+- **Tickets als Markdown** sind je Vorhaben ab 01 nummeriert. Der Schlüssel ist deshalb Vorhaben plus Nummer: `kasse/03`. Der Titel kommt aus der Überschrift `# <NN> — <Titel>`. Unter ihr liest der Mod die Zeilen `Status:`, `Type:`, `Labels:`, `Assignee:` und `Blocked by:`, auch fett geschrieben. Geschlossen ist ein Ticket mit dem Status `resolved` oder `wontfix`, wie die Skills ihn schreiben, oder mit einem der üblichen Worte dafür: `done`, `closed`, `erledigt`, `geschlossen`. Jeder andere Status zählt wie ein Label: `needs-info`, `blocked`, `claimed`.
+- **Wann:** einmal je Lauf, wenn eine Session beginnt oder eine Leiste geöffnet wird, und bei „Neu laden“. Sonst nie: nicht im Takt der Chats und nicht nach einer Festlegung. Gibt es noch keinen Plan, wird beim Laden nicht gefragt.
+- **Niemand wartet darauf:** Session-Start und die Befehle `/graph` und `/orchestrator` zeigen erst, was da ist, und fragen das Ticket-System gleich danach.
+- **Was nicht geht, ist ein Hinweis, kein Fehler:** Fehlt `gh` oder `glab`, ist niemand angemeldet oder kommt keine Liste zurück, läuft alles ohne Tickets weiter, und die Fläche sagt es („Keine Tickets aus GitHub: …“). Beim Laden gilt dann der Stand der Tickets vom letzten Ableiten.
+- **Gedeckelt:** höchstens 100 offene und 30 geschlossene Tickets je Aufruf, und zusammen höchstens 32.000 Zeichen ans Modell. Was fehlt, steht als Hinweis in der Fläche und im Block selbst.
+- **Text von außen:** Titel und Text eines Tickets kann jemand geschrieben haben, der nicht zum Projekt gehört. Sie gehen einzeilig, gekürzt und ohne spitze Klammern ans Modell, und der Auftrag nennt sie ausdrücklich Daten, keine Aufträge.
+
+### Was das Modell bekommt
+
+Einen Block `<tickets>` nach GOAL.md und den Festlegungen, vor der Doku, je Ticket eine Zeile. Ein erfundenes Beispiel:
+
+```
+<tickets system="GitHub" offen="2" geschlossen="1">
+#14 · offen · Gutschein an der Kasse prüfen · Labels: bereich:kasse · Bereich: kasse · zugewiesen: kassenwart · Text: Der Gutschein wird geprüft, bevor die Zahlart gewählt ist.
+#16 · offen · Rechnung als PDF · Labels: bereich:kasse, blocked · Bereich: kasse · blockiert laut Label · blockiert laut Ticket von: #15
+#11 · geschlossen am 2026-09-12 · Zahlarten festlegen · Labels: bereich:kasse · Bereich: kasse
+</tickets>
+```
+
+Der Auftrag sagt dazu (Entscheidungen 12 bis 15 der Spezifikation):
+
+- Ein Bündel ist ein Bündel von Tickets, die ein Chat in einem Zug erledigen würde, in der Regel nie ein einzelnes Ticket.
+- Jedes Bündel nennt seine Tickets im neuen Feld `"tickets"` der Antwort, und seine Punkte nennen sie mit Nummer und Titel.
+- Die zweite Zeile nennt den Fortschritt: „3 von 8 erledigt“.
+- Labels, die einen Bereich nennen, sind der stärkste Hinweis auf den Strang.
+- Wem ein Ticket zugewiesen ist, der macht es.
+- Was ein Ticket laut Ticket-System blockiert, steht als Grund da. Was das Modell nur schließt, ist „vermutet“.
+- Ein Ticket, das auf eine Auskunft von außen wartet, steht in „Später“ mit diesem Grund.
+
+Ohne den Block `<tickets>` gilt nichts davon, und die Eingabe ist Zeichen für Zeichen die von vorher.
+
+### Der frische Stand
+
+Erledigt, bereit und blockiert kommen bei jedem Laden aus dem Ticket-System, ohne Modell-Aufruf. Das ist eine Rechnung aus Plan und Tickets, die auf den gespeicherten Plan gelegt wird: Gespeichert bleibt, was das Modell gesagt hat, die Ansichten zeigen das Ergebnis. Für jedes Bündel, das Tickets nennt:
+
+1. **Fortschritt.** Die zweite Zeile beginnt mit „n von m erledigt“, gezählt aus den Tickets. Was das Modell selbst gezählt hat, fällt weg.
+2. **Erledigt.** Sind alle seine Tickets geschlossen, ist das Bündel erledigt und steht in „Hinter uns“.
+3. **Aufgehalten.** Trägt jedes seiner offenen Tickets ein Label, das es aufhält, wartet das Bündel und steht in „Später“. Trägt nur ein Teil eines, ist es zum Teil möglich und steht in „Jetzt möglich“. Die zweite Zeile nennt die Tickets: „#16 blockiert“, „#18 wartet auf Auskunft“. Ein Bündel, das laut Plan ohnehin auf etwas wartet, das noch offen ist, bleibt in „Später“.
+4. **Wieder möglich.** Ein Bündel, das wartete, ist bereit, wenn der Grund dafür weg ist: Das Bündel, auf das es wartete, ist jetzt erledigt, oder das Label, das es beim Ableiten aufhielt, ist fort. Wartet es aus einem Grund, den nur das Modell kennt, bleibt es stehen. Von selbst machen die Tickets ein Bündel also nie möglich.
+5. **Wieder offen.** Ist ein Ticket eines erledigten Bündels wieder offen, ist das Bündel nicht mehr erledigt.
+6. **Wer.** Sind alle offenen Tickets derselben einen Person zugewiesen, endet die zweite Zeile mit „macht <Name>“.
+7. **Ein Ticket, das das Ticket-System nicht mehr nennt,** gilt als geschlossen, wenn die Liste der offenen Tickets vollständig ist (weniger als 100). Sonst bleibt es, wie es beim Ableiten stand. Nennt das Ticket-System gar keines der Tickets vom Ableiten mehr, oder ist es ein anderes als damals, gilt für alle der Stand vom Ableiten, und die Fläche sagt es.
+
+Ein Bündel ohne Tickets bleibt genau, wie das Modell es gesagt hat. Was das Modell sonst in die zweite Zeile geschrieben hat, bleibt stehen, solange der Stand des Bündels derselbe ist.
+
+Offene Tickets, die es beim letzten Ableiten noch nicht gab, gehören zu keinem Bündel. Beide Ansichten zählen sie in einer Zeile: „3 neue Tickets seit dem letzten Ableiten“. In ein Bündel bringt sie erst „Neu ableiten“.
+
+Was der frische Stand ändert, gilt nicht als Änderung eines Laufs: Als voriger Plan gilt weiter, was die Ansichten gerade zeigen.
+
+### Welche Labels etwas bedeuten
+
+Ohne Einstellung gilt:
+
+- Ein Label heißt **blockiert**, wenn sein Name `block` enthält.
+- Ein Label heißt **wartet auf Auskunft**, wenn sein Name `wartet`, `waiting`, `needs-info` oder `question` enthält.
+- Kein Label gilt von selbst als **Bereichs-Label**. Das Modell sieht die Labels trotzdem.
+
+Das ist grob: `non-blocking` enthält auch `block`. Wer es genau will, nennt die Labels in GOAL.md, in einem freiwilligen Abschnitt:
+
+```
+## Tracker
+Blockiert: blocked, steht-still
+Wartet auf Auskunft: needs-info
+Bereich: bereich:
+```
+
+- `Blockiert:` und `Wartet auf Auskunft:` nennen Labels beim Namen, mit Komma getrennt. Dann zählen genau diese, die Vorgabe nicht mehr. Groß- und Kleinschreibung ist egal.
+- `Bereich:` nennt, womit Bereichs-Labels beginnen. Mit `bereich:` nennt das Label `bereich:kasse` den Bereich „kasse“, und die Zeile des Tickets sagt es dem Modell.
+- Jede der drei Zeilen ist für sich freiwillig. Die Zeilen dürfen Listenpunkte sein und fett geschrieben.
+- Bei Tickets als Markdown ist der Status das Label: `Status: blocked` hält ein Ticket auf.
+
+### Was die Ansichten zeigen
+
+- Die Eckdaten eines Laufs nennen das Ticket-System und die Zahl der gelesenen Tickets: „… aus 5 Dateien, 1 Chat, 30 Commits und 14 Tickets (GitHub)“.
+- Die Zeile im Graphen und die Karte eines Bündels mit Tickets zeigen den Fortschritt, auch wenn das Bündel auf ein anderes wartet.
+- Die aufgeklappte Zeile und die Detail-Fläche nennen die Tickets mit Nummer, Titel und Zeichen: `✓` geschlossen, `○` offen, `·` aufgehalten, dann mit „(blockiert)“ oder „(wartet auf Auskunft)“. Punkte, die nur ein Ticket wiederholen, stehen nicht noch einmal da.
+- Der Auftrag fürs Eingabefeld nennt die Tickets und sagt, welche schon geschlossen sind.
 
 ## Chats
 
@@ -190,13 +288,15 @@ Alles liegt lokal unter `~/.claude/ziel-graph/<schlüssel>/`. Der Schlüssel kom
 
 | Datei unter `plan/` | Inhalt |
 | --- | --- |
-| `plan.json` | der letzte gelungene Lauf: die rohe Antwort des Modells, womit sie aufgeräumt wurde, der Text von GOAL.md, die Festlegungen, die das Modell bekommen hat, was der Lauf am Plan davor geändert hat, die Eckdaten und der Plan |
+| `plan.json` | der letzte gelungene Lauf: die rohe Antwort des Modells, womit sie aufgeräumt wurde, die Tickets, die der Lauf gelesen hat, der Text von GOAL.md, die Festlegungen, die das Modell bekommen hat, was der Lauf am Plan davor geändert hat, die Eckdaten und der Plan, so wie das Modell ihn gesagt hat |
 | `festlegungen.json` | die Festlegungen, die noch nicht in GOAL.md stehen: `{ "version": 1, "festlegungen": [{ "satz": "…", "zeit": 1791115200000 }] }` |
 | `letzter.json` | der letzte Lauf, auch ein gescheiterter: Dauer, Verbrauch, Quellen, Festlegungen, Antwort, Hinweise, Änderungen |
 | `lauf-<zeit>.json` | derselbe Inhalt je Lauf |
 | `letzte-eingabe.txt` | was das Modell als Eingabe bekommen hat |
 
 `plan.json` trägt seit Version 0.4.0 die Version 2: Dazugekommen sind `festlegungen` (eine Liste von Sätzen) und `aenderungen` (`null` nach dem ersten Lauf, sonst `eintraege` und `endziel`). Eine Datei der Version 1 lädt weiter; sie zeigt keine Änderungen und gilt beim nächsten Lauf als voriger Plan.
+
+Seit Version 0.5.0 trägt sie die Version 3: Dazugekommen sind unter `fakten` das Ticket-System (`tracker`) und die Zahl der gelesenen Tickets (`tickets`), und unter `umfeld.tickets` je gelesenem Ticket Schlüssel, Titel, ob es geschlossen war, Labels und Zuweisung. Damit lässt sich der Plan auch ohne Ticket-System wieder so zeigen, wie er beim Ableiten stand, und es ist zu sehen, welche Tickets seitdem neu sind. Dateien der Versionen 1 und 2 laden weiter; sie nennen keine Tickets.
 
 Beide Ansichten lesen dieselbe `plan.json`. Ein Plan, den die Version 0.1.0 des Orchestrators unter `~/.claude/orchestrator/<schlüssel>/plan.json` abgelegt hat, wird nicht von selbst übernommen. Die Datei hat dieselbe Form: Wer sie nach `~/.claude/ziel-graph/<schlüssel>/plan/plan.json` kopiert, sieht den alten Plan wieder. Sonst genügt „Neu ableiten“.
 
@@ -221,9 +321,11 @@ Alles steht unter `plugins/ziel-graph/`. Nur `hooks/register.tsx` fasst die Engi
 | Datei | Inhalt |
 | --- | --- |
 | `hooks/register.tsx` | der Zugang zur Engine: Laden, der Lauf, die Handgriffe aller Knöpfe, die zwei Leisten |
-| `hooks/chats.ts` | die laufenden Chats: ihre Dateien, die Selbst-Anmeldung, der Stand nach einer Antwort |
-| `hooks/plan/goal.ts` | GOAL.md lesen; die Aufträge zum Anlegen, zum Festlegen und zum Eintragen der Festlegungen |
-| `hooks/plan/quellen.ts` | GOAL.md, Doku, Chats und Commits für einen Lauf lesen |
+| `hooks/chats.ts` | die laufenden Chats: ihre Dateien, die Selbst-Anmeldung, der Stand nach einer Antwort; welches Ticket-System das Repo nutzt |
+| `hooks/plan/goal.ts` | GOAL.md lesen, auch den Abschnitt „Tracker“; die Aufträge zum Anlegen, zum Festlegen und zum Eintragen der Festlegungen |
+| `hooks/plan/quellen.ts` | GOAL.md, Tickets, Doku, Chats und Commits für einen Lauf lesen |
+| `hooks/plan/tickets.ts` | die Tickets: lesen aus GitHub, GitLab und Markdown-Dateien, was die Labels bedeuten, die Zeile fürs Modell |
+| `hooks/plan/frisch.ts` | der frische Stand: aus Plan und Tickets, was erledigt, bereit und blockiert ist |
 | `hooks/plan/festlegungen.ts` | die lokalen Festlegungen: lesen, aufnehmen, zurücknehmen, mit denen aus GOAL.md zusammenführen |
 | `hooks/plan/ableiten.ts` | der Auftrag ans Modell, die Eingabe mit Festlegungen und vorigem Plan, das Aufräumen der Antwort zum Plan |
 | `hooks/plan/vergleich.ts` | der neue Plan gegen den vorigen: was sich geändert hat |
@@ -241,7 +343,11 @@ Alles steht unter `plugins/ziel-graph/`. Nur `hooks/register.tsx` fasst die Engi
 
 - **In der echten App** ist noch nichts angesehen: ob die Spalten bündig stehen, wie breit der Knopf „›“ ist, ob „Auto“ dem Farbschema folgt, wie breit sich die Leiste ziehen lässt.
 - **Der Versuch** ist nur gegen die Test-Engine geprüft. Ob `$.session.send` eine andere Session der Desktop-App erreicht, ob die Engine vor dem Senden nachfragt, ob sie den Versand dort wirklich mit dem Mod-Namen `ziel-graph` ausweist und wie die andere Session den Prompt des Mods aufnimmt, zeigt erst die App.
-- **Tickets** als Quelle fehlen noch (GitLab, GitHub, Markdown).
+- **Tickets** sind nur gegen die Test-Engine geprüft, mit erfundenen Tickets und vorgetäuschter Ausgabe von `gh` und `glab`. Kein echtes Repo wurde gefragt. Die Felder für GitHub sind an der echten Ausgabe von `gh` nachgesehen. **GitLab ist ganz ungeprüft:** `glab` war beim Bauen nicht installiert; die Felder stammen aus der Beschreibung der Schnittstelle. Offen ist dort auch, ob `glab api` `:id` in jedem Repo ersetzt und was es ohne Anmeldung ausgibt.
+- **`gh issue list --state closed --limit 30`** ordnet wohl nach dem Anlegen, nicht nach dem Schließen; nachgeprüft ist das nicht. Dann stimmt „zuletzt geschlossen“ bei GitHub nur ungefähr: Ein altes Ticket, das gerade geschlossen wurde, kann in der Eingabe fehlen. Der frische Stand merkt es trotzdem, weil es nicht mehr unter den offenen steht.
+- **Verknüpfungen** zwischen Tickets liest der Mod nicht als solche, weder die von GitLab noch die von GitHub (`blockedBy`). Was ein Ticket blockiert, erfährt das Modell aus Labels und aus der Zeile „Blocked by“ im Text. Der frische Stand rechnet nur mit Labels und mit dem, worauf ein Bündel laut Plan wartet.
+- **Ob das Modell die Regeln für Tickets befolgt** (Bündel statt einzelner Tickets, Bereichs-Labels, Zuweisung), zeigt erst ein echter Lauf in einem Repo mit Tickets.
+- **Ziel-Karten, Zuständigkeit je Bahn und das Ausblenden nach Personen** (Entscheidungen 13 und 14 der Spezifikation) gibt es weiter nicht. Wer ein Bündel macht, steht nur in seiner zweiten Zeile.
 - **Festlegungen und Fortschreiben** sind nur gegen die Test-Engine und mit erfundenen Antworten geprüft. Ob das Modell die Festlegungen befolgt und ob der Plan mit dem vorigen als Vorgabe wirklich ruhiger wird, zeigt erst ein echter Lauf. Ob das Feld für eine Festlegung nach „Festlegen“ in der App leer dasteht, auch.
 - **Was hinter uns liegt, wächst.** Beim Fortschreiben bleibt jedes erledigte Bündel eine eigene Zeile des Plans, damit kein Lauf Erledigtes neu zusammenfasst und das als Änderung erscheint. Beide Ansichten fassen es je Strang zusammen. Über viele Läufe kann der Plan so an die Grenze von 40 Bündeln stoßen; wann und wie Erledigtes dann aus dem Plan fällt, ist nicht entschieden.
 - **Vorschläge** des ableitenden Modells, die der Nutzer mit Ja oder Nein beantwortet (Entscheidung 16 der Spezifikation), gibt es noch nicht, und keinen Merge Request auf Knopfdruck: Den Eintrag in GOAL.md macht der Chat auf Zuruf.

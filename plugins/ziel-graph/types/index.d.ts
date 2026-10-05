@@ -29,6 +29,18 @@ export type ZielGraphStrang = {
   farbe: { hell: string; dunkel: string }
 }
 
+// Ein Ticket, das ein Bündel nennt, so wie es zuletzt im Ticket-System stand.
+export type ZielGraphTicket = {
+  // die Nummer ohne '#'; bei Tickets als Markdown Vorhaben und Nummer: 'kasse/03'
+  schluessel: string
+  titel: string
+  // true: geschlossen
+  zu: boolean
+  // warum an einem offenen Ticket gerade nicht gearbeitet werden kann: Ein Label nennt es
+  // blockiert, oder es wartet auf eine Auskunft von außen. '' wenn nichts dagegen spricht.
+  grund: '' | 'blockiert' | 'auskunft'
+}
+
 // Ein Bündel: das, was ein Chat in einem Zug erledigen würde. Eine Zeile des Graphen und
 // eine Karte.
 export type ZielGraphBuendel = {
@@ -49,6 +61,9 @@ export type ZielGraphBuendel = {
   wartetAuf: string
   // die Sessions der Chats, die das Modell diesem Bündel zugeordnet hat
   chats: string[]
+  // die Tickets des Bündels; fehlt, wenn es keine nennt. Ein Bündel mit Tickets bekommt
+  // Fortschritt und Stand bei jedem Laden frisch aus dem Ticket-System.
+  tickets?: ZielGraphTicket[]
 }
 
 // Ein Schritt auf dem Stamm: ein Zwischenziel aus GOAL.md, der Treffpunkt des Modells oder
@@ -85,7 +100,8 @@ export type ZielGraphEndziel = {
 }
 
 // Der eine Plan des Mods. Beide Ansichten zeichnen ihn: `/graph` als Graph, `/orchestrator`
-// als Karten.
+// als Karten. Was sie zeigen, ist der Plan des Modells mit dem frischen Stand der Tickets
+// darauf; gespeichert bleibt, was das Modell gesagt hat.
 export type ZielGraphPlan = {
   // true: Beim Aufräumen lag eine GOAL.md vor
   mitGoal: boolean
@@ -151,6 +167,10 @@ export type ZielGraphFakten = {
   modell: string
   // wo der Plan liegt; '' wenn er sich nicht schreiben ließ
   datei: string
+  // das Ticket-System des Repos beim Ableiten; fehlt bei einem Plan von vor Version 0.5.0
+  tracker?: ZielGraphTracker
+  // wie viele Tickets der Lauf dort gelesen hat: offene und zuletzt geschlossene
+  tickets?: number
 }
 
 // Was beide Ansichten zeigen: der letzte gespeicherte Plan und wie GOAL.md gerade dasteht.
@@ -174,6 +194,9 @@ export type ZielGraphGeladen = {
   }
   // was der letzte Lauf am Plan davor geändert hat; null: Es gab keinen Plan davor
   aenderungen: ZielGraphAenderungen | null
+  // wie viele offene Tickets das Ticket-System nennt, die es beim letzten Ableiten noch
+  // nicht gab: Sie gehören zu keinem Bündel
+  neueTickets: number
   // wann zuletzt von der Platte gelesen wurde, in Millisekunden; 0: noch nie
   gelesen: number
 }

@@ -289,3 +289,88 @@ export const amWarenkorb = (frage = ''): ZielGraphChats => ({
   gelesen: 1,
   chats: [chat('sitzung-7', 'Warenkorb-Regeln', { frage })],
 })
+
+// ---------- Die Tickets des Shops ----------
+
+// Die Tickets, wie sie im Ticket-System des Shops stehen. Alles erfunden, auch die Anmeldenamen.
+export type ShopTicket = {
+  nr: number
+  titel: string
+  // der Tag, an dem es geschlossen wurde; ohne Angabe ist es offen
+  zu?: string
+  labels?: string[]
+  wer?: string
+  meilenstein?: string
+  text?: string
+}
+
+export const TICKETS: ShopTicket[] = [
+  { nr: 14, titel: 'Gutschein an der Kasse prüfen', labels: ['bereich:kasse'], wer: 'kassenwart', meilenstein: 'Großer Umbau', text: 'Der Gutschein wird geprüft, bevor die Zahlart gewählt ist.' },
+  { nr: 15, titel: 'Restbetrag eines Gutscheins merken', labels: ['bereich:kasse'], wer: 'kassenwart' },
+  { nr: 16, titel: 'Rechnung als PDF', labels: ['bereich:kasse', 'blocked'], text: 'Die Rechnung kommt als PDF per Mail.\n\n## Blocked by\n\n- #15\n' },
+  { nr: 17, titel: 'Texte für Taschen abnehmen', labels: ['bereich:katalog'] },
+  { nr: 18, titel: 'Maße der Jacken erfragen', labels: ['bereich:katalog', 'needs-info'], text: 'Der Einkauf muss die Maße liefern.' },
+  { nr: 19, titel: 'Suchfeld für den Preis', labels: ['bereich:suche'] },
+  { nr: 12, titel: 'Warenkorb merkt sich die Menge', zu: '2026-09-20', labels: ['bereich:kasse'] },
+  { nr: 11, titel: 'Zahlarten festlegen', zu: '2026-09-12', labels: ['bereich:kasse'] },
+]
+
+// Dieselben Tickets, wie `gh issue list --json …` sie ausgibt: `zu` wählt die geschlossenen.
+export const alsGithub = (tickets: readonly ShopTicket[], zu: boolean): string =>
+  JSON.stringify(
+    tickets
+      .filter(one => (one.zu !== undefined) === zu)
+      .map(one =>
+        zu
+          ? { number: one.nr, title: one.titel, state: 'CLOSED', closedAt: `${one.zu}T09:30:00Z`, labels: (one.labels ?? []).map(name => ({ id: `L_${name}`, name, description: '', color: 'ededed' })) }
+          : {
+              number: one.nr,
+              title: one.titel,
+              state: 'OPEN',
+              labels: (one.labels ?? []).map(name => ({ id: `L_${name}`, name, description: '', color: 'ededed' })),
+              assignees: one.wer === undefined ? [] : [{ id: `U_${one.wer}`, login: one.wer, name: '' }],
+              milestone: one.meilenstein === undefined ? null : { number: 2, title: one.meilenstein, description: '', dueOn: null },
+              updatedAt: '2026-09-28T08:00:00Z',
+              body: one.text ?? '',
+            },
+      ),
+  )
+
+// Und wie `glab api projects/:id/issues?…` sie ausgibt.
+export const alsGitlab = (tickets: readonly ShopTicket[], zu: boolean): string =>
+  JSON.stringify(
+    tickets
+      .filter(one => (one.zu !== undefined) === zu)
+      .map(one => ({
+        id: 9000 + one.nr,
+        iid: one.nr,
+        title: one.titel,
+        state: zu ? 'closed' : 'opened',
+        labels: one.labels ?? [],
+        assignees: one.wer === undefined ? [] : [{ id: 7, username: one.wer, name: 'Kasse' }],
+        milestone: one.meilenstein === undefined ? null : { iid: 2, title: one.meilenstein },
+        updated_at: '2026-09-28T08:00:00.000Z',
+        closed_at: one.zu === undefined ? null : `${one.zu}T09:30:00.000Z`,
+        description: one.text ?? null,
+      })),
+  )
+
+// Die Bündel des Shops, wenn das Modell Tickets bekommt: Jedes nennt seine Tickets.
+const MIT_TICKETS: Record<string, Partial<Zeile> & { tickets: (string | number)[] }> = {
+  zahlarten: { tickets: ['#11', '#12'], meta: '2 von 2 erledigt', quelle: 'tickets' },
+  gutscheine: {
+    tickets: ['#14', '#15'],
+    meta: '0 von 2 erledigt',
+    punkte: ['#14 Gutschein an der Kasse prüfen', '#15 Restbetrag eines Gutscheins merken', 'Text für die Hilfe-Seite'],
+    quelle: 'tickets',
+  },
+  rechnungen: { tickets: ['#16'], meta: '0 von 1 erledigt · blockiert laut Label', wartetAuf: 'gutscheine', vermutet: false, quelle: 'tickets' },
+  'katalog-texte': { tickets: ['#17'], quelle: 'tickets' },
+  rueckfragen: { tickets: ['#18'], meta: '0 von 1 erledigt · wartet auf Auskunft: Maße vom Einkauf', quelle: 'tickets' },
+  suchfelder: { tickets: ['#19'], quelle: 'tickets' },
+}
+
+export const ZEILEN_MIT_TICKETS = ZEILEN.map(one => ({ ...one, ...(MIT_TICKETS[one.id] ?? { tickets: [] }) }))
+
+export const antwortMitTickets = (anders: Record<string, unknown> = {}): string =>
+  antwort({ zeilen: ZEILEN_MIT_TICKETS.map(one => ({ meta: '', punkte: [], wartetAuf: '', vermutet: false, ...one })), ...anders })

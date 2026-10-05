@@ -9,8 +9,18 @@ import type {
 
 import { nameVon } from '../chats'
 import { ENDZIEL } from '../fest'
-import { QUELLE_CHATS, QUELLE_COMMITS, ZONEN_FOLGE } from '../plan/ableiten'
-import { aenderungsMarke, endzielZeile, laufende, mitMarke, schrittMeta, zielTitel } from '../plan/lesen'
+import { QUELLE_CHATS, QUELLE_COMMITS, QUELLE_TICKETS, ZONEN_FOLGE } from '../plan/ableiten'
+import {
+  aenderungsMarke,
+  endzielZeile,
+  laufende,
+  mitFortschritt,
+  mitMarke,
+  punkteOhneTickets,
+  schrittMeta,
+  ticketPunkte,
+  zielTitel,
+} from '../plan/lesen'
 import { eindeutig, mehrzahl, sauber } from '../worte'
 
 import { STAMM } from './daten'
@@ -31,7 +41,9 @@ const quellenZeile = (quelle: string): string =>
     ? 'Quelle: laufende Chats'
     : quelle === QUELLE_COMMITS
       ? 'Quelle: Git-Verlauf'
-      : `Quelle: ${quelle}`
+      : quelle === QUELLE_TICKETS
+        ? 'Quelle: Tickets'
+        : `Quelle: ${quelle}`
 
 // Was das Modell nur schließt, sagt die zweite Zeile, wenn sie es nicht schon tut.
 const mitVermutung = (meta: string, vermutet: boolean): string =>
@@ -42,6 +54,8 @@ const mitVermutung = (meta: string, vermutet: boolean): string =>
 // Die Zeile eines Bündels. Ob ein Chat an ihm arbeitet und ob er wartet, sagen die Chats,
 // die gerade laufen: Zugeordnet hat sie das Modell beim Ableiten. Hat der letzte Lauf das
 // Bündel neu gebracht, verschoben oder umbenannt, steht das vorn in seiner zweiten Zeile.
+// Nennt das Bündel Tickets, sagt die zweite Zeile den Fortschritt, und aufgeklappt stehen
+// die Tickets da: Nummer, Titel und ob sie geschlossen sind.
 const zeileAus = (
   plan: ZielGraphPlan,
   eines: ZielGraphBuendel,
@@ -55,10 +69,11 @@ const zeileAus = (
   const meta =
     ziel === '' || (eines.stand === 'teilweise' && eines.meta !== '')
       ? mitVermutung(eines.meta, eines.vermutet)
-      : `wartet auf: ${sauber(ziel, MAX_WARTE_TITEL)}${eines.vermutet ? ' (vermutet)' : ''}`
+      : mitFortschritt(eines, `wartet auf: ${sauber(ziel, MAX_WARTE_TITEL)}${eines.vermutet ? ' (vermutet)' : ''}`)
   const unterzeilen = [
     ...offene.map(chat => `Chat: ${nameVon(chat)}${chat.frage === '' ? '' : ' · wartet auf dich'}`),
-    ...eines.punkte,
+    ...ticketPunkte(eines),
+    ...punkteOhneTickets(eines),
     ...(eines.quelle === '' ? [] : [quellenZeile(eines.quelle)]),
   ]
 
