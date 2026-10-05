@@ -5,6 +5,11 @@ import type { FsEntry, On, RenderSurface, UiOpenResult } from 'claude-code'
 import type { ZielGraphChat } from '../types'
 
 import {
+  FERTIG_MS,
+  STILL_MS,
+  ausgeblendetZeile,
+  chatLage,
+  istFertig,
   istTicketDatei,
   nameVon,
   schluessel,
@@ -314,6 +319,7 @@ for (const surface of ['desktop', 'terminal', 'vscode', 'mobile'] as const) {
       naechster: 'Die Rundung der Beträge prüfen.',
       frage: 'Sollen die Versandkosten ab 50 Euro entfallen?',
       zeit: JETZT,
+      fertig: false,
       ticket: '218',
       ticketTitel: 'Versandkosten im Warenkorb zeigen',
     })
@@ -709,6 +715,225 @@ test('/graph öffnet die Pane und sagt, ob sie gezeichnet wird', async ($, on) =
   welt.oberflaechen = []
   expect(await befehl($, 'graph')).toContain('(Oberflächen: keine)')
   expect(welt.geoeffnet).toHaveLength(3)
+})
+
+// ---------- Fertig, still, ausgeblendet ----------
+
+const FERTIG = '{"name": "Kasse", "stand": "Der Entwurf ist zusammengeführt.", "naechster": "", "frage": "", "fertig": true}'
+
+test('nach jeder Antwort sagt die Zusammenfassung, ob der Chat fertig ist: im Zweifel nicht, mit offener Frage nie', async ($, on) => {
+  const welt = baue(on, { branch: 'kasse-entwurf', modell: FERTIG })
+
+  await starte($)
+  await antworte($, welt, 'Der Entwurf ist zusammengeführt. Damit ist die Aufgabe erledigt.')
+
+  // Der Auftrag ans Modell nennt das neue Feld und ist vorsichtig: im Zweifel nicht fertig.
+  const auftrag = welt.fragen[0]?.system ?? ''
+
+  expect(auftrag).toContain('{"name": "...", "stand": "...", "naechster": "...", "frage": "...", "fertig": false}')
+  expect(auftrag).toContain(
+    '- fertig: true nur, wenn die Aufgabe, für die dieser Chat begonnen wurde, ganz erledigt ist und der Chat auf nichts mehr wartet: Es gibt keinen nächsten Schritt mehr, und "frage" ist leer. Im Zweifel false. Wartet der Chat auf eine Antwort oder Freigabe des Nutzers, ist "fertig" immer false.',
+  )
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ name: 'Kasse', frage: '', fertig: true, zeit: JETZT })
+
+  // Mit einer offenen Frage ist ein Chat nie fertig, was auch immer das Modell dazu sagt.
+  welt.modell = '{"name": "", "stand": "Der Entwurf steht.", "naechster": "", "frage": "Soll ich zusammenführen?", "fertig": true}'
+  await antworte($, welt, 'Soll ich zusammenführen?')
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ frage: 'Soll ich zusammenführen?', fertig: false })
+
+  // Nur ein ausdrückliches true zählt: kein Feld, ein Text oder eine Zahl heißen „nicht fertig“.
+  for (const antwort of [
+    '{"name": "", "stand": "Der Entwurf steht.", "naechster": "", "frage": ""}',
+    '{"name": "", "stand": "Der Entwurf steht.", "naechster": "", "frage": "", "fertig": "true"}',
+    '{"name": "", "stand": "Der Entwurf steht.", "naechster": "", "frage": "", "fertig": 1}',
+  ]) {
+    welt.modell = FERTIG
+    await antworte($, welt, 'Erledigt.')
+    expect(gespeichert(welt, EIGENE)).toMatchObject({ fertig: true })
+    welt.modell = antwort
+    await antworte($, welt, 'Noch eine Kleinigkeit.')
+    expect(gespeichert(welt, EIGENE)).toMatchObject({ fertig: false })
+  }
+
+  // Bleibt die Zusammenfassung nach einer neuen Antwort aus, gilt der Chat nicht mehr als fertig.
+  welt.modell = FERTIG
+  await antworte($, welt, 'Erledigt.')
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ fertig: true })
+  welt.modell = null
+  await antworte($, welt, 'Da ist doch noch etwas.')
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ fertig: false, stand: 'Der Entwurf ist zusammengeführt.' })
+})
+
+for (const surface of ['desktop', 'terminal', 'vscode', 'mobile'] as const) {
+  test(`${surface}: ein fertiger Chat steht 24 Stunden blass unter den laufenden; danach und nach 7 stillen Tagen ist ein Chat ausgeblendet, nicht gelöscht`, async ($, on) => {
+    const welt = baue(on, { branch: 'main' })
+    const STUNDE = 60 * MINUTE
+
+    // Eine Datei von vor Version 0.6.0 kennt das Feld „fertig“ nicht: Ihr Chat läuft.
+    lege(welt, { id: 'sitzung-b', name: 'Suche', stand: 'Der Index ist gebaut.', zeit: JETZT - 2 * STUNDE })
+    lege(welt, { id: 'sitzung-c', name: 'Katalog', branch: 't12-katalog', stand: 'Die Texte sind abgenommen.', fertig: true, zeit: JETZT - 3 * STUNDE })
+    lege(welt, { id: 'sitzung-d', name: 'Bilder', stand: 'Alle Bilder sind zugeschnitten.', fertig: true, zeit: JETZT - 25 * STUNDE })
+    lege(welt, { id: 'sitzung-e', name: 'Versand', stand: 'Der Entwurf steht.', frage: 'Noch da?', zeit: JETZT - 8 * TAG })
+    // Wer herausgenommen ist, bleibt draußen: Er zählt auch nicht als ausgeblendet.
+    lege(welt, { id: 'sitzung-f', name: 'Abgemeldet', aktiv: false, fertig: true })
+    await starte($)
+
+    const ui = await $.ui.mount({ ...ZIEL, surface })
+    const anfang = await inhalt(ui)
+
+    // Oben, was läuft; darunter blass, was fertig ist; was ausgeblendet ist, nur als Zahl.
+    expect(anfang).toContain('1 Chat, keiner wartet auf dich')
+    expect(anfang).toContain('○ Suche')
+    expect(anfang).toContain('✓ Katalog · fertig')
+    expect(anfang).toContain('vor 3 Std · t12-katalog')
+    expect(anfang).toContain('Die Texte sind abgenommen.')
+    expect(anfang.indexOf('○ Suche') < anfang.indexOf('✓ Katalog · fertig')).toBe(true)
+    expect(anfang).toContain('2 fertige oder stille Chats ausgeblendet')
+    expect(anfang).not.toContain('Bilder')
+    expect(anfang).not.toContain('Versand')
+    expect(anfang).not.toContain('Abgemeldet')
+    expect(anfang).not.toContain('meldet sich nach seiner nächsten Antwort selbst an')
+    expect((await ui.findAll({ type: 'Text', text: '✓ Katalog · fertig' })).map(one => [one.props.dimColor, one.props.bold])).toEqual([[true, undefined]])
+    expect((await ui.findAll({ type: 'Text', text: '2 fertige oder stille Chats ausgeblendet' }))[0]?.props.dimColor).toBe(true)
+    // Der Knopf dazu steht unter der Liste, vor „Neu laden“.
+    expect((await ui.findAll({ type: 'Button' })).map(one => one.props.key).slice(0, 3)).toEqual(['ausgeblendete', 'laden', 'auf'])
+    expect((await ui.findAll({ key: 'ausgeblendete' }))[0]?.text).toBe('Zeigen')
+    // Die Frage eines ausgeblendeten Chats meldet sich nicht.
+    expect(welt.toasts).toEqual([])
+
+    // Der Knopf zeigt die ausgeblendeten: blass, mit „fertig“ oder „still“. Sie zählen weiter nicht.
+    await ui.press({ key: 'ausgeblendete' })
+
+    const gezeigt = await inhalt(ui)
+
+    expect(gezeigt).toContain('1 Chat, keiner wartet auf dich')
+    expect(gezeigt).toContain('2 fertige oder stille Chats eingeblendet, bis neu geladen wird')
+    expect(gezeigt).toContain('✓ Bilder · fertig')
+    expect(gezeigt).toContain('· Versand · still')
+    expect(gezeigt).toContain('vor 8 Tagen')
+    expect(gezeigt).toContain('Wartet auf dich: Noch da?')
+    expect(gezeigt).not.toContain('Abgemeldet')
+    expect(gezeigt.indexOf('✓ Katalog · fertig') < gezeigt.indexOf('✓ Bilder · fertig')).toBe(true)
+    expect(gezeigt.indexOf('✓ Bilder · fertig') < gezeigt.indexOf('· Versand · still')).toBe(true)
+    expect(await ui.findAll({ key: 'ausgeblendete' })).toHaveLength(0)
+    expect((await ui.findAll({ type: 'Text', text: 'Wartet auf dich: Noch da?' }))[0]?.props).toMatchObject({ dimColor: true })
+
+    // Der Takt, in dem die Chats neu gelesen werden, blendet sie nicht wieder aus …
+    await welt.uhr.advance(TAKT)
+    expect(await inhalt(ui)).toContain('✓ Bilder · fertig')
+    // … „Neu laden“ schon. Die Dateien liegen alle noch da.
+    await ui.press({ key: 'laden' })
+    expect(await inhalt(ui)).toContain('2 fertige oder stille Chats ausgeblendet')
+    expect(await inhalt(ui)).not.toContain('Bilder')
+    expect(await ui.findAll({ key: 'ausgeblendete' })).toHaveLength(1)
+    expect([...welt.dateien.keys()].filter(one => one.startsWith(`${ORDNER}/`)).sort()).toEqual(
+      ['sitzung-b', 'sitzung-c', 'sitzung-d', 'sitzung-e', 'sitzung-f'].map(one => `${ORDNER}/${one}.json`),
+    )
+    expect(welt.toasts).toEqual([])
+
+    // Die letzte Antwort des fertigen Chats ist jetzt 24 Stunden alt: Nach spätestens 20
+    // Sekunden ist auch er ausgeblendet.
+    lege(welt, { id: 'sitzung-c', name: 'Katalog', stand: 'Die Texte sind abgenommen.', fertig: true, zeit: JETZT + TAKT - FERTIG_MS })
+    await welt.uhr.advance(TAKT)
+    expect(await inhalt(ui)).toContain('3 fertige oder stille Chats ausgeblendet')
+    expect(await inhalt(ui)).not.toContain('Katalog')
+
+    // Eine neue Antwort in einem ausgeblendeten Chat: Er steht sofort wieder da und läuft.
+    lege(welt, { id: 'sitzung-d', name: 'Bilder', stand: 'Zwei Bilder fehlen doch noch.', fertig: false, zeit: JETZT + TAKT })
+    lege(welt, { id: 'sitzung-e', name: 'Versand', stand: 'Der Entwurf steht.', frage: 'Passt der Entwurf?', zeit: JETZT + TAKT })
+    await welt.uhr.advance(TAKT)
+
+    const zurueck = await inhalt(ui)
+
+    expect(zurueck).toContain('3 Chats, 1 wartet auf dich')
+    expect(zurueck).toContain('○ Bilder')
+    expect(zurueck).toContain('● Versand')
+    expect(zurueck).toContain('1 fertiger oder stiller Chat ausgeblendet')
+    expect(welt.toasts).toEqual(['Versand wartet auf dich: Passt der Entwurf?'])
+
+    await ui.unmount()
+  })
+}
+
+test('der eigene Chat, fertig oder ausgeblendet, bleibt angemeldet: Der Knopf nimmt ihn heraus, eine neue Antwort macht ihn sofort wieder aktiv', async ($, on) => {
+  const welt = baue(on, {
+    branch: 'kasse-entwurf',
+    modell: '{"name": "", "stand": "Die Rundung wird noch geprüft.", "naechster": "Die Rundung prüfen.", "frage": "", "fertig": false}',
+  })
+
+  // Der eigene Chat ist seit 30 Stunden fertig: ausgeblendet, aber angemeldet.
+  lege(welt, { id: 'sitzung-a', name: 'Kasse', branch: 'kasse-entwurf', stand: 'Der Entwurf ist zusammengeführt.', fertig: true, zeit: JETZT - 30 * 60 * MINUTE })
+  await starte($)
+
+  const ui = await $.ui.mount({ ...ZIEL, surface: 'desktop' })
+
+  expect(await inhalt(ui)).toContain('0 Chats, keiner wartet auf dich')
+  expect(await inhalt(ui)).toContain('1 fertiger oder stiller Chat ausgeblendet')
+  expect(await inhalt(ui)).not.toContain('Kasse')
+  expect(await ui.findAll({ key: 'heraus' })).toHaveLength(1)
+  expect(await ui.findAll({ key: 'auf' })).toHaveLength(0)
+  await ui.press({ key: 'ausgeblendete' })
+  expect(await inhalt(ui)).toContain('✓ Kasse (dieser Chat) · fertig')
+
+  // Eine neue Antwort in diesem Chat: Er läuft sofort wieder, und nichts ist mehr ausgeblendet.
+  await antworte($, welt, 'Ich prüfe noch die Rundung der Beträge.')
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ fertig: false, zeit: JETZT })
+  expect(await inhalt(ui)).toContain('1 Chat, keiner wartet auf dich')
+  expect(await inhalt(ui)).toContain('○ Kasse (dieser Chat)')
+  expect(await inhalt(ui)).not.toContain('ausgeblendet')
+  expect(await inhalt(ui)).not.toContain('eingeblendet')
+
+  // Wird er wieder fertig, steht er blass da und lässt sich weiter herausnehmen.
+  welt.modell = FERTIG
+  await antworte($, welt, 'Die Rundung stimmt. Damit ist alles erledigt.')
+  expect(await inhalt(ui)).toContain('0 Chats, keiner wartet auf dich')
+  expect(await inhalt(ui)).toContain('✓ Kasse (dieser Chat) · fertig')
+  expect(await ui.findAll({ key: 'heraus' })).toHaveLength(1)
+
+  // Herausgenommen bleibt er draußen: nicht fertig gelistet und nicht als ausgeblendet gezählt.
+  await ui.press({ key: 'heraus' })
+  expect(gespeichert(welt, EIGENE)).toMatchObject({ aktiv: false, fertig: true })
+  expect(await inhalt(ui)).not.toContain('Kasse')
+  expect(await inhalt(ui)).not.toContain('ausgeblendet')
+  expect(await ui.findAll({ key: 'auf' })).toHaveLength(1)
+
+  await ui.unmount()
+})
+
+test('wo ein Chat steht: fertig 24 Stunden, still nach 7 Tagen, mit offener Frage nie fertig', () => {
+  const chat = (fertig: boolean | undefined, frage = '') => ({ ...(fertig === undefined ? {} : { fertig }), frage })
+  const STUNDE = 60 * MINUTE
+
+  expect(FERTIG_MS).toBe(24 * STUNDE)
+  expect(STILL_MS).toBe(7 * TAG)
+
+  // Ein laufender Chat steht 7 Tage nach seiner letzten Antwort da, dann ist er still.
+  expect(chatLage(chat(false), JETZT - STUNDE, JETZT)).toBe('laeuft')
+  expect(chatLage(chat(false), JETZT - 6 * TAG, JETZT)).toBe('laeuft')
+  expect(chatLage(chat(false), JETZT - STILL_MS + 1, JETZT)).toBe('laeuft')
+  expect(chatLage(chat(false), JETZT - STILL_MS, JETZT)).toBe('aus')
+  expect(chatLage(chat(false, 'Noch da?'), JETZT - 8 * TAG, JETZT)).toBe('aus')
+  // Ein fertiger steht 24 Stunden nach seiner letzten Antwort da, dann ist er ausgeblendet.
+  expect(chatLage(chat(true), JETZT, JETZT)).toBe('fertig')
+  expect(chatLage(chat(true), JETZT - FERTIG_MS + 1, JETZT)).toBe('fertig')
+  expect(chatLage(chat(true), JETZT - FERTIG_MS, JETZT)).toBe('aus')
+  expect(chatLage(chat(true), JETZT - 3 * TAG, JETZT)).toBe('aus')
+  // Mit einer offenen Frage ist ein Chat nie fertig, auch wenn seine Datei es sagt.
+  expect(chatLage(chat(true, 'Darf ich?'), JETZT - 3 * TAG, JETZT)).toBe('laeuft')
+  expect(istFertig(chat(true, 'Darf ich?'))).toBe(false)
+  expect(istFertig(chat(true))).toBe(true)
+  // Eine alte Datei ohne das Feld: nicht fertig.
+  expect(istFertig(chat(undefined))).toBe(false)
+  expect(chatLage(chat(undefined), JETZT - 2 * TAG, JETZT)).toBe('laeuft')
+  // Ohne Stand und ohne Zeit der Datei ist nichts über das Alter bekannt: Der Chat steht da.
+  expect(chatLage(chat(false), 0, JETZT)).toBe('laeuft')
+  expect(chatLage(chat(true), 0, JETZT)).toBe('fertig')
+
+  expect(ausgeblendetZeile(0, false)).toBe('')
+  expect(ausgeblendetZeile(1, false)).toBe('1 fertiger oder stiller Chat ausgeblendet')
+  expect(ausgeblendetZeile(2, false)).toBe('2 fertige oder stille Chats ausgeblendet')
+  expect(ausgeblendetZeile(1, true)).toBe('1 fertiger oder stiller Chat eingeblendet, bis neu geladen wird')
+  expect(ausgeblendetZeile(3, true)).toBe('3 fertige oder stille Chats eingeblendet, bis neu geladen wird')
 })
 
 // ---------- Die reinen Helfer ----------

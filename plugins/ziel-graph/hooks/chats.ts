@@ -35,7 +35,11 @@ export type LeseZugang = Pick<
   'sitzung' | 'heim' | 'repo' | 'wurzel' | 'jetzt' | 'gibtEs' | 'liste' | 'lies'
 >
 
-const VERALTET_MS = 14 * 24 * 60 * 60_000
+const TAG_MS = 24 * 60 * 60_000
+// So lange steht ein fertiger Chat nach seiner letzten Antwort noch in der Liste.
+export const FERTIG_MS = TAG_MS
+// So lange nach seiner letzten Antwort gilt ein Chat als still und ist ausgeblendet.
+export const STILL_MS = 7 * TAG_MS
 const HAUPTZWEIGE = ['', 'main', 'master', 'HEAD']
 const TRACKER_DATEI = 'docs/agents/issue-tracker.md'
 const NOCH_NICHTS = 'Noch kein Stand. Er kommt nach der nächsten Antwort.'
@@ -142,6 +146,8 @@ const alsChat = (roh: Record<string, unknown> | null): ZielGraphChat | null =>
         naechster: text(roh.naechster),
         frage: text(roh.frage),
         zeit: typeof roh.zeit === 'number' ? roh.zeit : 0,
+        // Eine Datei von vor Version 0.6.0 kennt das Feld nicht: Ihr Chat ist nicht fertig.
+        fertig: roh.fertig === true,
         ...(typeof roh.ticket === 'string' ? { ticket: roh.ticket } : {}),
         ...(typeof roh.ticketTitel === 'string' ? { ticketTitel: roh.ticketTitel } : {}),
       }
@@ -155,6 +161,7 @@ const neuerChat = (id: string, branch: string): ZielGraphChat => ({
   naechster: '',
   frage: '',
   zeit: 0,
+  fertig: false,
 })
 
 export const alter = (jetzt: number, zeit: number): string => {
@@ -191,6 +198,53 @@ export const zaehler = (chats: readonly ZielGraphChat[]): string => {
   return `${chats.length} ${chats.length === 1 ? 'Chat' : 'Chats'}, ${warten} auf dich`
 }
 
+// ---------- Fertig, still, ausgeblendet ----------
+
+// Ein Chat ist fertig, wenn sein letzter Stand das sagt. Mit einer offenen Frage ist er es nie.
+export const istFertig = (chat: Pick<ZielGraphChat, 'fertig' | 'frage'>): boolean =>
+  chat.fertig === true && chat.frage === ''
+
+// Wo ein angemeldeter Chat steht. 'laeuft': in der Liste, und er zählt. 'fertig': darunter
+// und blass. 'aus': ausgeblendet; seine Datei bleibt liegen.
+export type ChatLage = 'laeuft' | 'fertig' | 'aus'
+
+// Ein fertiger Chat steht noch 24 Stunden nach seiner letzten Antwort da, jeder Chat 7 Tage.
+// `angefasst`: wann sein Stand zuletzt geschrieben wurde und, ohne Stand, seine Datei; 0,
+// wenn beides fehlt. Eine neue Antwort schreibt den Stand neu: Damit steht der Chat sofort
+// wieder da.
+export const chatLage = (
+  chat: Pick<ZielGraphChat, 'fertig' | 'frage'>,
+  angefasst: number,
+  jetzt: number,
+): ChatLage => {
+  const seit = angefasst === 0 ? 0 : jetzt - angefasst
+
+  if (seit >= STILL_MS) {
+    return 'aus'
+  }
+
+  if (!istFertig(chat)) {
+    return 'laeuft'
+  }
+
+  return seit < FERTIG_MS ? 'fertig' : 'aus'
+}
+
+// Jeder angemeldete Chat des Repos: die laufenden, die fertigen und die ausgeblendeten.
+export const angemeldete = (stand: ZielGraphChats): ZielGraphChat[] => [
+  ...stand.chats,
+  ...(stand.fertige ?? []),
+  ...(stand.ausgeblendet ?? []),
+]
+
+// Die eine Zeile über das, was ausgeblendet ist: „2 fertige oder stille Chats ausgeblendet“.
+// `sindDa`: Der Nutzer hat sie eingeblendet. '' ohne.
+export const ausgeblendetZeile = (anzahl: number, sindDa: boolean): string => {
+  const wer = anzahl === 1 ? '1 fertiger oder stiller Chat' : `${anzahl} fertige oder stille Chats`
+
+  return anzahl <= 0 ? '' : sindDa ? `${wer} eingeblendet, bis neu geladen wird` : `${wer} ausgeblendet`
+}
+
 // Die Chats, deren Frage dieses Fenster noch nicht kennt. Der eigene Chat zählt nicht, und
 // beim ersten Laden (bekannt ist null) gilt nichts als neu.
 export const neueFragen = (
@@ -225,16 +279,20 @@ export const schluesselVon = async (zugang: Pick<ChatZugang, 'repo' | 'wurzel'>)
 export const ordnerVon = async (zugang: Pick<ChatZugang, 'heim' | 'repo' | 'wurzel'>): Promise<string> =>
   `${await zugang.heim()}/.claude/ziel-graph/${await schluesselVon(zugang)}`
 
-// Die Chats des Repos, die beide Ansichten zeigen: angemeldet und in den letzten 14 Tagen
-// angefasst. Gelesen werden nur die Dateien direkt im Ordner, keine Unterordner.
+// Die angemeldeten Chats des Repos: die laufenden, die fertigen der letzten 24 Stunden und,
+// getrennt davon, die ausgeblendeten. Wer per Knopf herausgenommen ist, steht in keiner der
+// drei Listen. Gelesen werden nur die Dateien direkt im Ordner, keine Unterordner.
 export const liesChats = async (zugang: LeseZugang): Promise<ZielGraphChats> => {
   const dir = await ordnerVon(zugang)
   const ich = await zugang.sitzung()
   const gelesen = await zugang.jetzt()
   const chats: ZielGraphChat[] = []
+  const fertige: ZielGraphChat[] = []
+  const ausgeblendet: ZielGraphChat[] = []
+  const listen: Record<ChatLage, ZielGraphChat[]> = { laeuft: chats, fertig: fertige, aus: ausgeblendet }
 
   if (!(await zugang.gibtEs(dir))) {
-    return { ich, chats, gelesen }
+    return { ich, chats, fertige, ausgeblendet, gelesen }
   }
 
   const dateien = (await zugang.liste(dir)).filter(
@@ -243,19 +301,19 @@ export const liesChats = async (zugang: LeseZugang): Promise<ZielGraphChats> => 
 
   for (const datei of dateien) {
     const chat = alsChat(alsObjekt(await liesText(zugang, `${dir}/${datei.name}`)))
-    // Ohne Stand zählt, wann die Datei zuletzt geschrieben wurde.
-    const angefasst = chat === null ? 0 : chat.zeit || datei.mtimeMs
-    const istFrisch = angefasst === 0 || gelesen - angefasst < VERALTET_MS
 
-    if (chat?.aktiv === true && istFrisch) {
-      chats.push(chat)
+    if (chat?.aktiv === true) {
+      // Ohne Stand zählt, wann die Datei zuletzt geschrieben wurde.
+      listen[chatLage(chat, chat.zeit || datei.mtimeMs, gelesen)].push(chat)
     }
   }
 
   // Wer auf den Nutzer wartet, steht oben; darunter das Neueste zuerst.
   chats.sort((a, b) => Number(b.frage !== '') - Number(a.frage !== '') || b.zeit - a.zeit)
+  fertige.sort((a, b) => b.zeit - a.zeit)
+  ausgeblendet.sort((a, b) => b.zeit - a.zeit)
 
-  return { ich, chats, gelesen }
+  return { ich, chats, fertige, ausgeblendet, gelesen }
 }
 
 // Die eigene Datei, auch wenn der Chat abgemeldet ist: wer sich abgemeldet hat, bleibt draußen.
@@ -372,12 +430,13 @@ const ticketTitel = async (zugang: ChatZugang, nummer: string): Promise<string> 
 
 const AUFTRAG = `Du füllst eine Zeile in einer Übersicht über parallele Arbeits-Chats.
 Antworte NUR mit einem JSON-Objekt, ohne Markdown-Zaun und ohne Text davor oder danach:
-{"name": "...", "stand": "...", "naechster": "...", "frage": "..."}
+{"name": "...", "stand": "...", "naechster": "...", "frage": "...", "fertig": false}
 
 - name: nur wenn "Name des Chats" leer ist, sonst leerer Text. Dann 2 bis 4 Worte, die sagen, woran dieser Chat arbeitet. Passt das genannte Ticket klar zum ersten Auftrag, beginne mit "#Nummer ".
 - stand: ein kurzer Satz in einfachen Worten: was ist in diesem Chat jetzt erreicht.
 - naechster: ein kurzer Satz: der nächste konkrete Schritt.
 - frage: die Frage oder Freigabe, auf die der Chat gerade vom Nutzer wartet, als ein kurzer Satz. Leerer Text, wenn er auf nichts wartet.
+- fertig: true nur, wenn die Aufgabe, für die dieser Chat begonnen wurde, ganz erledigt ist und der Chat auf nichts mehr wartet: Es gibt keinen nächsten Schritt mehr, und "frage" ist leer. Im Zweifel false. Wartet der Chat auf eine Antwort oder Freigabe des Nutzers, ist "fertig" immer false.
 
 Schreibe auf Deutsch mit Umlauten. Erfinde nichts: was nicht in den Angaben steht, lässt du weg. Ändert die letzte Antwort nichts am bisherigen Stand, übernimm ihn.`
 
@@ -448,14 +507,19 @@ export const fasseZusammen = async (
       return false
     }
 
+    const frage = felder === null ? ich.frage : text(felder.frage)
+
     await schreibe(zugang, dir, {
       ...ich,
       name: inzwischen.name || kurz(text(felder?.name), 40) || branch || `#${ticket}`,
       branch,
       stand: text(felder?.stand) || ich.stand,
       naechster: felder === null ? ich.naechster : text(felder.naechster),
-      frage: felder === null ? ich.frage : text(felder.frage),
+      frage,
       zeit: await zugang.jetzt(),
+      // Fertig ist ein Chat nur, wenn das Modell es nach dieser Antwort ausdrücklich sagt.
+      // Bleibt die Zusammenfassung aus oder wartet der Chat auf den Nutzer, ist er es nicht.
+      fertig: felder?.fertig === true && frage === '',
       ...(ticket === '' ? {} : { ticket, ticketTitel: titel }),
     })
 

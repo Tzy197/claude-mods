@@ -33,7 +33,8 @@ import {
 import type { Knoten, Vorgabe, Welt, Zeichnung } from './welt'
 
 // Die schmale Ansicht `/graph`: unter den Chats der Plan als Graph, im Aussehen „Ruhig“, in
-// Streifen mit einem echten Pfeil-Knopf je Zeile. Die Maße hängen am Shop ohne GOAL.md.
+// Streifen mit einem echten Pfeil-Knopf je Zeile. Die Maße hängen am Shop ohne GOAL.md. An
+// seinem Dauerläufer „Betrieb“ arbeitet kein Chat: Er ruht und steht in einer Zeile.
 
 // Eine Session mit dem Shop ohne GOAL.md, in der die schmale Ansicht offen ist und das
 // Modell die Bahnen selbst schneidet.
@@ -59,7 +60,8 @@ const ganzesBild = (welt: Welt, wunsch: GraphWunsch = {}): Bild => {
   return probe.bild
 }
 
-// Die Zeilen mit Unterzeilen: zuerst je Bahn die Zeile für das, was hinter uns liegt.
+// Die Zeilen mit Unterzeilen: zuerst je Bahn die Zeile für das, was hinter uns liegt. Die
+// zwei offenen Bündel des Dauerläufers „Betrieb“ stehen in der einen Zeile „ruht“.
 const BUENDEL = [
   'erledigt-kat',
   'erledigt-kas',
@@ -67,8 +69,7 @@ const BUENDEL = [
   'warenkorb',
   'gutscheine',
   'suchfelder',
-  'ladezeit',
-  'build-skripte',
+  'ruht-btr',
   'rueckfragen',
   'rechnungen',
   'umbau',
@@ -76,8 +77,9 @@ const BUENDEL = [
   'lager',
 ]
 
-// Die Knöpfe über dem Graphen, von oben nach unten. Ohne GOAL.md steht ihr Hinweis dabei.
-const KOPF_KNOEPFE = ['laden', 'auf', 'neu', 'goal-anlegen', 'ansicht-schritte', 'ansicht-uebersicht']
+// Die Knöpfe über dem Graphen, von oben nach unten: zuerst der für den einen Chat des Shops,
+// der seit Wochen still und deshalb ausgeblendet ist. Ohne GOAL.md steht ihr Hinweis dabei.
+const KOPF_KNOEPFE = ['ausgeblendete', 'laden', 'auf', 'neu', 'goal-anlegen', 'ansicht-schritte', 'ansicht-uebersicht']
 
 // Der Aufbau ohne die Blätter: welche Box mit welchen Angaben worin steckt.
 const gerippe = (knoten: Knoten): unknown =>
@@ -188,7 +190,8 @@ for (const surface of SURFACES) {
     expect(ohne).toContain('1 Chat, 1 wartet auf dich')
     expect(ohne).toContain('Noch kein Plan für dieses Repo: „Neu ableiten“ leitet ihn aus GOAL.md, Doku, Chats und Commits ab.')
     expect(ohne).toContain('GOAL.md fehlt: Ohne sie ist alles über Ziele nur vermutet.')
-    expect(await knoepfe(ui)).toEqual(['laden', 'auf', 'neu', 'goal-anlegen'])
+    expect(ohne).toContain('1 fertiger oder stiller Chat ausgeblendet')
+    expect(await knoepfe(ui)).toEqual(['ausgeblendete', 'laden', 'auf', 'neu', 'goal-anlegen'])
     expect(await ui.findAll({ type: 'Svg' })).toHaveLength(0)
 
     // Der Knopf kehrt sofort zurück: Der Lauf beginnt erst danach.
@@ -243,7 +246,7 @@ for (const surface of SURFACES) {
     const svg = await ui.findAll({ type: 'Svg' })
 
     expect(await ui.drawn()).toMatchObject({ type: 'Box' })
-    expect(svg).toHaveLength(surface === 'terminal' ? 0 : 15)
+    expect(svg).toHaveLength(surface === 'terminal' ? 0 : 14)
 
     if (surface !== 'terminal') {
       const source = String(svg[0]?.props.source)
@@ -264,11 +267,13 @@ for (const surface of SURFACES) {
     // Darunter der Plan: Endziel, die Eckdaten des Laufs und die Zähler.
     expect(text).toContain('Endziel (vermutet): der Shop im Betrieb')
     expect(text).toContain('Abgeleitet gerade eben in 23 s aus 5 Dateien, 1 Chat und 30 Commits · claude-sonnet-5-5')
-    expect(text).toContain('6 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
+    // Was der Dauerläufer offen hat, zählt nicht mit: Er ruht.
+    expect(text).toContain('4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
     expect(text).toContain('HINTER UNS')
     expect(text).toContain('JETZT MÖGLICH')
     expect(text).toContain('SPÄTER')
     expect(text).toContain('Katalog: 1 erledigt')
+    expect(text).toContain('Betrieb: ruht · 2 offen')
     expect(text).toContain('Entwurf Warenkorb-Regeln')
     expect(text).toContain('[Chat · wartet auf dich]')
     expect(text).toContain('Treffpunkt: Großer Umbau')
@@ -358,9 +363,9 @@ for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
 
     // Ein Svg je Streifen: der Kopf und je Zeile einer. Zusammen sind sie genau das eine Bild.
     expect(await ui.findAll({ type: 'Svg' })).toHaveLength(teile.length)
-    expect(teile).toHaveLength(15)
+    expect(teile).toHaveLength(14)
     pruefeTeilung(ganz, teile)
-    expect([ganz.breite, ganz.hoehe]).toEqual([500, 811])
+    expect([ganz.breite, ganz.hoehe]).toEqual([500, 765])
     expect(teile.every(one => one.breite === 500)).toBe(true)
     expect(teile[0]?.alt).toContain('Ziel-Graph, Ansicht Schritte.')
     expect(teile[1]?.alt).toBe('Katalog: 1 erledigt')
@@ -388,7 +393,15 @@ for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
     expect(ganz.source).toContain('>Katalog: 1 erledigt</text>')
     expect(ganz.source).toContain('>Grundstock: 13 Produktseiten fertig</text>')
     expect(ganz.source).toContain('>Kasse: 1 erledigt</text>')
-    expect(await mitBildern(ui)).toContain('6 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
+    expect(await mitBildern(ui)).toContain('4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
+
+    // Der Dauerläufer, der ruht, steht in einer Zeile dort, wo seine zwei Bündel standen:
+    // blass, mit dem kleinen Punkt, und seine Bahn endet weiter im Pfeil.
+    expect(teile[7]?.alt).toBe('Betrieb: ruht · 2 offen')
+    expect(ganz.source).toContain('font-weight="500" fill="#5a6d76" class="f-leise">Betrieb: ruht · 2 offen</text>')
+    expect(ganz.source).toContain('>Ladezeit der Startseite senken · Umbau der Build-Sk…</text>')
+    expect(ganz.source).toContain('<circle cx="96" cy="390" r="4.5" stroke-width="2" opacity="0.75"')
+    expect(ganz.source).toContain(`<path d="M90.5 ${ganz.hoehe - 17} L101.5 ${ganz.hoehe - 17} L96 ${ganz.hoehe - 6} Z"`)
 
     // Sonst gibt es keinen Aufklapp-Knopf: Über dem Bild steht keine Liste dafür.
     expect(await knoepfe(ui)).toEqual([...KOPF_KNOEPFE, 'alles', ...BUENDEL.map(one => `auf-${one}`)])
@@ -424,7 +437,7 @@ test('desktop: Der Pfeil klappt das Bündel an seiner Zeile auf: Sein Streifen w
 
   expect(stelle).toBe(3)
   expect(zu[stelle]).toMatchObject({ oben: 190, hoehe: 46, zeichen: '▸' })
-  expect(hoehe(zu)).toBe(811)
+  expect(hoehe(zu)).toBe(765)
 
   // Ein Druck auf den Pfeil: Die vier Unterzeilen stehen im Streifen des Bündels.
   await ui.press({ key: 'auf-katalog-texte' })
@@ -447,7 +460,7 @@ test('desktop: Der Pfeil klappt das Bündel an seiner Zeile auf: Sein Streifen w
   expect(lage(auf.slice(stelle + 1))).toEqual(
     lage(zu.slice(stelle + 1)).map(one => ({ ...one, oben: one.oben + mehr })),
   )
-  expect(hoehe(auf)).toBe(811 + mehr)
+  expect(hoehe(auf)).toBe(765 + mehr)
 
   // Noch ein Druck klappt es wieder zu: derselbe Stapel wie vorher.
   await ui.press({ key: 'auf-katalog-texte' })
@@ -480,8 +493,9 @@ test('desktop: Der Pfeil klappt das Bündel an seiner Zeile auf: Sein Streifen w
   // Jeder Streifen mit Knopf ist gewachsen, die anderen nicht.
   expect(alle.map((one, i) => Number(one.hoehe) > Number(zu[i]?.hoehe))).toEqual(zu.map(one => one.knopf !== null))
   expect(alle.map((one, i) => Number(one.hoehe) >= Number(zu[i]?.hoehe))).toEqual(zu.map(() => true))
-  // Zehn Zeilen mit einer Unterzeile, dazu vier, zwei und drei: je 21 px und 12 px Luft je Block.
-  expect(hoehe(alle)).toBe(811 + 13 * 12 + (10 + 4 + 2 + 3) * 21)
+  // Acht Zeilen mit einer Unterzeile, dazu vier, zwei und drei und die zwei Bündel des
+  // Dauerläufers, der ruht: je 21 px und 12 px Luft je Block.
+  expect(hoehe(alle)).toBe(765 + 12 * 12 + (8 + 4 + 2 + 3 + 2) * 21)
   expect(await mitBildern(ui)).toContain('Alles zuklappen')
 
   // Ein einzelnes Bündel klappt auch dann an seiner Zeile wieder zu.
@@ -529,6 +543,9 @@ test('terminal: Die Liste zeigt dieselben Zeilen wie das Bild, das Bündel selbs
     'Der Entwurf der Regeln steht.',
     'Weiter: Die Rundung der Beträge prüfen.',
     'Wartet auf dich: Sollen Gutscheine auch den Versand decken?',
+    // Ein Chat des Shops ist seit Wochen still: Er steht nur als Zahl da.
+    '1 fertiger oder stiller Chat ausgeblendet',
+    '[ausgeblendete] Zeigen',
     '[laden] Neu laden',
     '[auf] Diesen Chat aufnehmen',
     // Darunter der Plan.
@@ -537,7 +554,7 @@ test('terminal: Die Liste zeigt dieselben Zeilen wie das Bild, das Bündel selbs
     '[goal-anlegen] GOAL.md mit dem Chat entwerfen',
     'Endziel (vermutet): der Shop im Betrieb',
     'Abgeleitet gerade eben in 23 s aus 5 Dateien, 1 Chat und 30 Commits · claude-sonnet-5-5',
-    '6 Bündel jetzt möglich · 1 laufen · 1 warten auf dich',
+    '4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich',
     '[ansicht-schritte] Schritte',
     '[ansicht-uebersicht] Übersicht',
     '[alles] Alles aufklappen',
@@ -565,10 +582,9 @@ test('terminal: Die Liste zeigt dieselben Zeilen wie das Bild, das Bündel selbs
     '  Kasse · ',
     '[auf-suchfelder] ○ Suchfelder und Sortierung ▸',
     '  Suche · ',
-    '[auf-ladezeit] ○ Ladezeit der Startseite senken ▸',
-    '  Betrieb · ',
-    '[auf-build-skripte] ◐ Umbau der Build-Skripte ▸',
-    '  Betrieb · 1 von 3 erledigt · Rest wartet auf den Lasttest',
+    // Der Dauerläufer ruht: seine zwei offenen Bündel in einer Zeile.
+    '[auf-ruht-btr] · Betrieb: ruht · 2 offen ▸',
+    '  Betrieb · Ladezeit der Startseite senken · Umbau der Build-Skripte',
     'SPÄTER',
     '[auf-rueckfragen] · 10 Rückfragen an den Einkauf ▸',
     '  Katalog · wartet auf Auskunft',
@@ -610,9 +626,10 @@ test('terminal: Die Liste zeigt dieselben Zeilen wie das Bild, das Bündel selbs
 test('ein Bild über der Grenze der Engine wird zur Liste', async ($, on) => {
   // Anführungszeichen und spitze Klammern stehen im SVG als lange Ersatzfolgen.
   const lang = '"'.repeat(90)
+  // Alle Bündel liegen in den drei Zielen: Der Dauerläufer hat keines und klappt nichts ein.
   const zeilen = Array.from({ length: 40 }, (_, n) => ({
     id: `z${n}`,
-    bahn: OHNE_GOAL.bahnen[n % 4]?.id,
+    bahn: OHNE_GOAL.bahnen[n % 3]?.id,
     zone: 'jetzt',
     stand: 'bereit',
     titel: `Bündel ${n} mit vielen Punkten`,
@@ -687,7 +704,7 @@ for (const surface of SURFACES) {
 
     // Der Plan, wie GOAL.md ihn verankert: ihr Endziel wörtlich, ihre Zwischenziele auf dem Stamm.
     expect(text).toContain('Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an.')
-    expect(text).toContain('6 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
+    expect(text).toContain('4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
     expect(text).toContain('Katalog: 2 erledigt')
     expect(text).toContain('Grundstock steht')
     expect(text).toContain('erreicht')
@@ -700,7 +717,7 @@ for (const surface of SURFACES) {
 
     // Kasse und Betrieb haben in GOAL.md kein Ziel: eine kurze Zeile, je Strang ein Knopf.
     expect(text).toContain('Ohne Ziel in GOAL.md: Kasse, Betrieb')
-    expect((await knoepfe(ui)).slice(0, 5)).toEqual(['laden', 'auf', 'neu', 'ziel-kasse', 'ziel-betrieb'])
+    expect((await knoepfe(ui)).slice(0, 6)).toEqual(['ausgeblendete', 'laden', 'auf', 'neu', 'ziel-kasse', 'ziel-betrieb'])
     expect((await ui.findAll({ key: 'ziel-kasse' }))[0]?.text).toBe('Ziel festlegen: Kasse')
 
     // Der Knopf legt denselben Auftrag ins Eingabefeld wie in der breiten Ansicht. Geschrieben wird nichts.
@@ -760,7 +777,8 @@ test('desktop: mit GOAL.md mündet der Graph ins erste offene Zwischenziel, und 
   const { welt, ui } = await mitGoal($, on, 'desktop')
   const teile = await stapel(ui)
 
-  // Der Kopf, je Bahn mit Erledigtem eine Zeile, acht offene Bündel, drei Zwischenziele, das Endziel.
+  // Der Kopf, je Bahn mit Erledigtem eine Zeile, sechs offene Bündel, der Dauerläufer, der
+  // ruht, in einer Zeile, drei Zwischenziele, das Endziel.
   expect(teile.map(one => one.knopf)).toEqual([
     null,
     'auf-erledigt-katalog',
@@ -769,8 +787,7 @@ test('desktop: mit GOAL.md mündet der Graph ins erste offene Zwischenziel, und 
     'auf-warenkorb',
     'auf-gutscheine',
     'auf-suchfelder',
-    'auf-ladezeit',
-    'auf-build-skripte',
+    'auf-ruht-betrieb',
     'auf-rueckfragen',
     'auf-rechnungen',
     'auf-grundstock-steht',
@@ -783,7 +800,7 @@ test('desktop: mit GOAL.md mündet der Graph ins erste offene Zwischenziel, und 
 
   // Was laut GOAL.md zum Zwischenziel gehört, steht aufgeklappt unter ihm.
   await ui.press({ key: 'auf-grosser-umbau' })
-  expect((await stapel(ui))[12]?.alt).toBe('Großer Umbau: Stränge: Katalog, Kasse; Quelle: GOAL.md')
+  expect((await stapel(ui))[11]?.alt).toBe('Großer Umbau: Stränge: Katalog, Kasse; Quelle: GOAL.md')
   await ui.press({ key: 'auf-grosser-umbau' })
 
   // Ändert sich eine halbe Stunde lang nichts, laufen die Zeitangaben trotzdem weiter: Die
@@ -799,14 +816,14 @@ test('desktop: mit GOAL.md mündet der Graph ins erste offene Zwischenziel, und 
   legeChat(welt, 'sitzung-7', { name: 'Warenkorb-Regeln', stand: 'Die Regeln sind fertig.', frage: '' })
   await welt.uhr.advance(20_000)
   expect((await stapel(ui))[4]?.alt).toBe('Entwurf Warenkorb-Regeln [Chat]')
-  expect(await mitBildern(ui)).toContain('6 Bündel jetzt möglich · 1 laufen · 0 warten auf dich')
+  expect(await mitBildern(ui)).toContain('4 Bündel jetzt möglich · 1 laufen · 0 warten auf dich')
 
   // Er wird herausgenommen: Die Zeile ist wieder frei, ohne neuen Modell-Aufruf.
   legeChat(welt, 'sitzung-7', { name: 'Warenkorb-Regeln', aktiv: false })
   await ui.press({ key: 'laden' })
   expect((await stapel(ui))[4]?.alt).toBe('Entwurf Warenkorb-Regeln')
   expect(await mitBildern(ui)).toContain('0 Chats, keiner wartet auf dich')
-  expect(await mitBildern(ui)).toContain('6 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
+  expect(await mitBildern(ui)).toContain('4 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
   expect(welt.fragen).toHaveLength(1)
 
   await ui.unmount()
@@ -839,7 +856,7 @@ test('was beim Ableiten aufgefallen ist, zählt die schmale Ansicht nur und verw
   expect(text).toContain('Beim Ableiten aufgefallen: 4 Hinweise. Sie stehen in der Ansicht /orchestrator.')
   // Der Chat, den die Antwort nicht nennt, steht oben in der Liste, markiert aber keine Zeile.
   expect(text).toContain('● Warenkorb-Regeln')
-  expect(text).toContain('6 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
+  expect(text).toContain('4 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
   expect(welt.toasts).toEqual(['Ableiten fertig nach 23 s: 11 Bündel in 4 Strängen, 4 Hinweise'])
   expect(gespeichert(welt, `${ORDNER}/letzter.json`).warnungen).toEqual([
     'Bündel „Lager anbinden“ nennt den unbekannten Strang „lager“: weggelassen.',

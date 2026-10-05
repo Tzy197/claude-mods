@@ -1,6 +1,6 @@
 {
   "name": "ziel-graph",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Der Plan eines Repos in zwei Ansichten, mit GOAL.md als Anker: /graph zeigt schmal die laufenden Chats und den Plan als Graph, /orchestrator breit denselben Plan als Prozesskarten",
   "types": "./types/index.d.ts"
 }

@@ -7,18 +7,19 @@ import type {
 } from '../types'
 
 import type { GraphDaten } from './graph/daten'
-import { fasseErledigtes } from './graph/ruhig'
+import { fasseErledigtes, fasseRuhendes } from './graph/ruhig'
 import { ALLE, sicht, zeichneSvg } from './graph/zeichnen'
 import type { Bild as GraphBild, Sicht as GraphSicht } from './graph/zeichnen'
 import { graphDaten } from './graph/zeilen'
 import { sicht as kartenSicht } from './karten/karten'
 import { baueFlaeche, vorschau, wunschZellen } from './karten/zeichnen'
 import type { Bild as KartenBild } from './karten/zeichnen'
+import { ruhende } from './plan/dauer'
 import { leseGespeichert, zeige } from './plan/lauf'
 
 // Zum Prüfen ohne die App: aus dem Text einer gespeicherten Plan-Datei (plan.json) dieselben
-// Bilder, die die zwei Ansichten daraus bauen, als reine Funktionen. Der Mod selbst braucht
-// diese Datei nicht.
+// Bilder, die die zwei Ansichten daraus bauen, als reine Funktionen: auch mit dem Dauerläufer,
+// der ruht, in einer Zeile oder einer Karte. Der Mod selbst braucht diese Datei nicht.
 
 // Ein Chat, der für die Probe als laufend gilt.
 export type ProbeChat = {
@@ -36,6 +37,9 @@ export type ProbeWahl = {
   // die Chats, die gerade laufen. Ohne Angabe laufen die, die das Modell beim Ableiten
   // kannte, und keiner wartet. Mit [] trägt keine Zeile und keine Karte eine Chat-Marke.
   chats?: readonly ProbeChat[]
+  // wann die Probe spielt, in Millisekunden: Daran hängt, ob ein Ticket frisch geschlossen
+  // ist und ein Dauerläufer damit aktiv. Ohne Angabe der Beginn des Laufs.
+  jetzt?: number
 }
 
 export type ProbePlan = {
@@ -45,6 +49,9 @@ export type ProbePlan = {
   warnungen: string[]
   // was der Lauf am Plan davor geändert hat, so wie es in der Plan-Datei steht; null ohne
   aenderungen: ZielGraphAenderungen | null
+  // die ids der Dauerläufer, die ruhen: an denen kein laufender Chat hängt und kein Ticket
+  // frisch geschlossen ist
+  ruhend: Set<string>
 }
 
 // Der Plan aus dem Text einer Plan-Datei, so wie ihn beide Ansichten nach „Neu laden“
@@ -61,27 +68,32 @@ export const lesePlan = (json: string, wahl: ProbeWahl = {}): ProbePlan | null =
   const { ableitung } = zeige(gespeichert, wahl.goal === undefined ? gespeichert.goal : wahl.goal, null)
   const laufende: readonly ProbeChat[] = wahl.chats ?? gespeichert.umfeld.chats
 
-  return ableitung.ok
-    ? {
-        plan: ableitung.plan,
-        chats: {
-          ich: '',
-          chats: laufende.map(one => ({
-            id: one.id,
-            name: one.name ?? gespeichert.umfeld.chats.find(chat => chat.id === one.id)?.name ?? '',
-            aktiv: true,
-            branch: '',
-            stand: '',
-            naechster: '',
-            frage: one.frage ?? '',
-            zeit: 0,
-          })),
-          gelesen: 0,
-        },
-        warnungen: ableitung.warnungen,
-        aenderungen: gespeichert.aenderungen,
-      }
-    : null
+  if (!ableitung.ok) {
+    return null
+  }
+
+  const chats: ZielGraphChats = {
+    ich: '',
+    chats: laufende.map(one => ({
+      id: one.id,
+      name: one.name ?? gespeichert.umfeld.chats.find(chat => chat.id === one.id)?.name ?? '',
+      aktiv: true,
+      branch: '',
+      stand: '',
+      naechster: '',
+      frage: one.frage ?? '',
+      zeit: 0,
+    })),
+    gelesen: 0,
+  }
+
+  return {
+    plan: ableitung.plan,
+    chats,
+    warnungen: ableitung.warnungen,
+    aenderungen: gespeichert.aenderungen,
+    ruhend: ruhende(ableitung.plan, chats, wahl.jetzt ?? gespeichert.fakten.zeit),
+  }
 }
 
 export type GraphWunsch = ProbeWahl & {
@@ -109,7 +121,7 @@ export const zeichneGraph = (json: string, wahl: GraphWunsch = {}): GraphProbe |
     return null
   }
 
-  const daten = fasseErledigtes(graphDaten(gelesen.plan, gelesen.chats, gelesen.aenderungen))
+  const daten = fasseRuhendes(fasseErledigtes(graphDaten(gelesen.plan, gelesen.chats, gelesen.aenderungen)), gelesen.ruhend)
   const farben = wahl.farben ?? 'auto'
   const bild = sicht(daten, {
     ansicht: wahl.ansicht ?? 'schritte',
@@ -143,7 +155,7 @@ export const zeichneKarten = (json: string, wahl: KartenWunsch = {}): KartenBild
   }
 
   const farben = wahl.farben ?? 'hell'
-  const flaeche = baueFlaeche(kartenSicht(gelesen.plan, gelesen.chats, wahl.karte ?? '', gelesen.aenderungen), {
+  const flaeche = baueFlaeche(kartenSicht(gelesen.plan, gelesen.chats, wahl.karte ?? '', gelesen.aenderungen, gelesen.ruhend), {
     zellen: wahl.zellen ?? wunschZellen(gelesen.plan.straenge.length),
     farben,
   })

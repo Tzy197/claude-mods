@@ -33,9 +33,11 @@ export type Taten = {
   ableiten: () => void
   laden: () => void
   lege: (auftrag: Auftrag) => void
-  // Die schmale Ansicht: diesen Chat aufnehmen oder herausnehmen, die Ansicht wechseln, aufklappen.
+  // Die schmale Ansicht: diesen Chat aufnehmen oder herausnehmen, die ausgeblendeten Chats
+  // zeigen, bis neu geladen wird, die Ansicht wechseln, aufklappen.
   aufnehmen: () => void
   herausnehmen: () => void
+  zeigeChats: () => void
   zeige: (ansicht: ZielGraphAnsicht) => void
   klappe: (id: string) => void
   klappeAlle: (ids: readonly string[]) => void

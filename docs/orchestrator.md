@@ -1,6 +1,6 @@
 # Orchestrator
 
-Stand: 2026-10-05, Version 0.5.0. Seit Version 0.3.0 ist der Orchestrator kein eigener Mod mehr, sondern die breite Ansicht des Mods `ziel-graph`. Seit Version 0.4.0 gibt es Festlegungen, der Plan wird von Lauf zu Lauf fortgeschrieben, und beide Ansichten sagen, was ein Lauf geändert hat. Seit Version 0.5.0 sind die Tickets des Repos eine Quelle: aus GitHub, aus GitLab oder als Markdown-Dateien, und ihr Stand kommt bei jedem Laden frisch, ohne Modell-Aufruf. Gebaut und mit `validate`, den Tests des Mods und der Typprüfung geprüft. In der echten App und an einem echten Ticket-System noch nicht angesehen.
+Stand: 2026-10-05, Version 0.6.0. Seit Version 0.3.0 ist der Orchestrator kein eigener Mod mehr, sondern die breite Ansicht des Mods `ziel-graph`. Seit Version 0.4.0 gibt es Festlegungen, der Plan wird von Lauf zu Lauf fortgeschrieben, und beide Ansichten sagen, was ein Lauf geändert hat. Seit Version 0.5.0 sind die Tickets des Repos eine Quelle: aus GitHub, aus GitLab oder als Markdown-Dateien, und ihr Stand kommt bei jedem Laden frisch, ohne Modell-Aufruf. Seit Version 0.6.0 gehen fertige Chats von selbst aus der Liste, ein Dauerläufer ohne Aktivität ruht in einer Zeile, und GOAL.md darf je Strang sagen, ob er ein Dauerläufer ist und wer ihn macht. Gebaut und mit `validate`, den Tests des Mods und der Typprüfung geprüft. In der echten App und an einem echten Ticket-System noch nicht angesehen.
 
 ## Zweck
 
@@ -13,10 +13,11 @@ Beide Ansichten teilen sich alles, was zählt: eine Ableitung, einen gespeichert
 
 Die Fläche zeigt den Plan des Repos als Prozesskarten:
 
-- **Je Strang eine Spalte.** Ein Strang ist das, was die Spezifikation des Ziel-Graphen eine Bahn nennt. Im Kopf der Spalte steht das Ziel des Strangs.
+- **Je Strang eine Spalte.** Ein Strang ist das, was die Spezifikation des Ziel-Graphen eine Bahn nennt. Im Kopf der Spalte steht das Ziel des Strangs und hinter seinem Namen, wer ihn laut GOAL.md macht.
 - **Drei Bänder von oben nach unten:** „Hinter uns“ (je Strang eine Karte „n erledigt“), „Jetzt möglich“ und „Später“.
 - **Darunter die Ziele:** die Zwischenziele und zuletzt das Endziel.
 - **Eine Karte** hat ein Zeichen in der Farbe ihres Strangs, den Titel auf bis zu zwei Zeilen und eine Meta-Zeile. Arbeitet ein Chat an ihr, steht dort „Chat läuft“ oder „Chat wartet auf dich“; die wartende Karte ist warm umrandet.
+- **Ein Dauerläufer, der ruht,** zeigt statt seiner offenen Bündel eine Karte „ruht · n offen“. Siehe „Dauerläufer“ weiter unten.
 - **Die Detail-Fläche** zeigt zur gewählten Karte ihre Punkte, ihre Quelle, worauf sie wartet und den Chat daran mit Stand, „Weiter“ und offener Frage.
 - **Über den Karten** steht das Feld für eine neue Festlegung und, nach jedem Lauf ab dem zweiten, was er am Plan geändert hat. **Unter den Karten** steht die Liste der Festlegungen.
 
@@ -31,6 +32,8 @@ Die Fläche zeigt den Plan des Repos als Prozesskarten:
 | Arbeit beginnen | In der Detail-Fläche einer Karte aus „Jetzt möglich“: „Auftrag ins Eingabefeld legen“. Der Auftrag nennt Strang und dessen Ziel, Titel, Punkte und Quelle. Abschicken tut ihn der Nutzer. |
 | Schritt verstehen | „Erklären lassen“ legt die Bitte ins Eingabefeld, den Schritt mit einem kleinen Bild zu erklären. |
 | Ziel festlegen | Knopf „Ziel festlegen“ unter dem Kopf eines Strangs ohne Ziel, „Endziel festlegen“ neben einem offenen Endziel. Beide legen einen Auftrag ins Eingabefeld. Die schmale Ansicht hat dieselben Knöpfe mit denselben Aufträgen. |
+| Ziel zum Dauerläufer machen | Knopf „Zum Dauerläufer machen“ neben der Zeile, die fragt, zum Beispiel „Suche hat alles erledigt. Zum Dauerläufer machen?“, in beiden Ansichten. Er legt den Auftrag ins Eingabefeld, mit dem Nutzer `Art: Dauerläufer` in GOAL.md einzutragen. |
+| An einem Dauerläufer arbeiten, der ruht | Seine Karte „ruht“ wählen. Die Detail-Fläche nennt seine Bündel und hat je jetzt möglichem einen Knopf „Auftrag:“ mit dem Titel des Bündels. |
 | Festlegung eingeben | Den Satz ins Feld „Neue Festlegung“ unter „Neu ableiten“ tippen, dann Enter oder „Festlegen“. Er gilt ab dem nächsten Ableiten. Kein Modell-Aufruf. |
 | Festlegung zurücknehmen | Knopf „Entfernen“ neben einer Festlegung, die noch nicht in GOAL.md steht. Was in GOAL.md steht, streicht der Chat. |
 | Festlegungen ins Repo bringen | Knopf „In GOAL.md eintragen lassen“: legt den Auftrag ins Eingabefeld, die lokalen Sätze unter „## Festlegungen“ einzutragen. |
@@ -41,7 +44,7 @@ Im Terminal gibt es keine Bilder. Dort stehen die Karten als Liste, je Karte ein
 
 ## GOAL.md
 
-GOAL.md ist der Anker des Plans (Entscheidung des Nutzers vom 2026-10-05). Die Datei liegt in der Wurzel des Repos und nennt das Endziel, die Zwischenziele auf dem Weg dorthin, je Strang das größere Ziel, das er verfolgt, und die Festlegungen des Nutzers. Was noch nicht klar ist, bleibt offen und wird mit der Zeit gefüllt.
+GOAL.md ist der Anker des Plans (Entscheidung des Nutzers vom 2026-10-05). Die Datei liegt in der Wurzel des Repos und nennt das Endziel, die Zwischenziele auf dem Weg dorthin, je Strang das größere Ziel, das er verfolgt, seine Art und wer ihn macht, und die Festlegungen des Nutzers. Was noch nicht klar ist, bleibt offen und wird mit der Zeit gefüllt.
 
 **Der Mod schreibt GOAL.md nie.** Er liest sie nur. Schreiben tut sie der Chat, auf Zuruf des Nutzers; die Knöpfe der Fläche legen dafür nur den Auftrag ins Eingabefeld.
 
@@ -61,6 +64,8 @@ GOAL.md ist der Anker des Plans (Entscheidung des Nutzers vom 2026-10-05). Die D
 ### <Name des Strangs>
 Ziel: <wohin dieser Strang führt, oder leer>
 Gehört zu: <eines der Zwischenziele, wenn es passt>
+Art: <Ziel oder Dauerläufer; die Zeile darf fehlen>
+Wer: <wer diesen Strang macht; die Zeile darf fehlen>
 
 ## Festlegungen
 - <ein Satz, der bei jedem Ableiten des Plans gewinnt>
@@ -100,6 +105,14 @@ Ziel: Jedes Produkt in zwei Klicks finden
 
 Hier haben Kasse und Betrieb noch kein Ziel. Ihre Spalten sagen „kein Ziel festgelegt“ und haben den Knopf „Ziel festlegen“. In der schmalen Ansicht steht dafür über dem Graphen die Zeile „Ohne Ziel in GOAL.md: Kasse, Betrieb“ mit je einem Knopf.
 
+Die zwei Zeilen `Art:` und `Wer:` sind freiwillig. So sagt GOAL.md, dass der Betrieb ein Dauerläufer ist und wer ihn macht (der Name ist erfunden):
+
+```
+### Betrieb
+Art: Dauerläufer
+Wer: Jonas
+```
+
 ### Wie die Datei gelesen wird
 
 Die Datei darf unvollständig und eigenwillig geschrieben sein.
@@ -108,7 +121,9 @@ Die Datei darf unvollständig und eigenwillig geschrieben sein.
 - **Endziel:** der erste Absatz, wörtlich. Auch „## Endziel: der Satz“ gilt.
 - **Zwischenziele:** je Listenpunkt eines, in der Reihenfolge der Datei. `- [x]` heißt erreicht. Eingerückte Zeilen darunter sind Erläuterung und zählen nicht.
 - **Stränge:** jede Überschrift unter „Stränge“ ist ein Strang. Die Reihenfolge der Datei ist die Reihenfolge der Spalten. Eine Liste statt Überschriften geht auch: `- Kasse: Bestellen ohne Umweg`.
-- **Felder eines Strangs:** `Ziel:` und `Gehört zu:`, auch als Listenpunkt oder fett. „Gehört zu“ muss eines der Zwischenziele nennen; sonst steht ein Hinweis in der Fläche.
+- **Felder eines Strangs:** `Ziel:`, `Gehört zu:`, `Art:` und `Wer:`, auch als Listenpunkt oder fett. „Gehört zu“ muss eines der Zwischenziele nennen; sonst steht ein Hinweis in der Fläche.
+- **Art:** „Dauerläufer“ (auch „Dauerlaeufer“ oder „dauer“) oder „Ziel“; statt `Art:` geht auch `Typ:`. Fehlt die Zeile oder ist sie offen, sagt GOAL.md nichts dazu. Steht dort etwas anderes, zählt die Zeile nicht, und ein Hinweis sagt es.
+- **Wer:** der Name dahinter, wörtlich, höchstens 24 Zeichen; statt `Wer:` geht auch `Zuständig:` oder `Verantwortlich:`.
 - **Festlegungen:** je Listenpunkt ein Satz, wörtlich. Die Zeile gleich darunter setzt einen langen Satz fort; ein eingerückter Listenpunkt ist Erläuterung und zählt nicht. Ohne Liste zählt jede Zeile. Steht derselbe Satz zweimal da, gilt er einmal, und die Fläche sagt es. Nur tiefer als „Stränge“ und unter ihr darf die Überschrift nicht stehen: Dort ist jede Überschrift ein Strang.
 - **Tracker:** ein freiwilliger Abschnitt „Tracker“ (auch „Ticket-System“, „Tickets“ oder „Labels“), der sagt, welche Labels etwas bedeuten. Siehe „Tickets“ weiter unten. Über Ziele sagt er nichts.
 - **Offen** heißt: leer, „noch offen“, „offen“, „unklar“, „?“, „–“, „tbd“ oder ein stehen gebliebener Platzhalter in spitzen Klammern.
@@ -123,6 +138,8 @@ Die Datei darf unvollständig und eigenwillig geschrieben sein.
 - **Ihre Zwischenziele** stehen unter den Bändern, in ihrer Reihenfolge. Im Graphen stehen sie auf dem Stamm: Ein abgehaktes trägt den gefüllten Punkt, ins erste offene münden die Bahnen der Ziele.
 - Findet das Modell in den anderen Quellen einen Strang, der in GOAL.md fehlt, hängt er hinten an und ist als „nicht in GOAL.md“ markiert.
 - Ein Strang ohne Ziel sagt „kein Ziel festgelegt“. Was das Modell dazu vermutet, steht daneben als „vermutet: …“.
+- **Ihre Art eines Strangs gewinnt:** Sagt GOAL.md `Art: Dauerläufer` oder `Art: Ziel`, gilt das, was auch immer das Modell sagt, und ohne Hinweis. Sagt GOAL.md nichts, zählt wie bisher, was das Modell sagt. Was das Programm zur Art gelesen hat, steht fürs Modell bei den Strängen dabei („· Art: Dauerläufer“).
+- **Wer einen Strang macht,** steht in der breiten Ansicht im Kopf seiner Spalte hinter dem Namen und in der schmalen hinter seinem Namen in der Legende („Kasse · Mara“). Ans Modell geht die Zeile nur als Teil von GOAL.md; einen eigenen Block gibt es nicht. Für ein einzelnes Bündel gewinnt die Zuweisung im Ticket-System: Es sagt dann „macht <Name>“.
 - **Ihre Festlegungen** gehen als verbindliche Regeln ans Modell, siehe unten.
 - **GOAL.md wird bei jedem Laden frisch gelesen.** Ein Ziel, das der Chat gerade eingetragen hat, zeigt „Neu laden“ sofort, ohne Modell-Aufruf. Hat sich GOAL.md seit dem letzten Ableiten geändert, sagt die Fläche das.
 
@@ -162,6 +179,35 @@ Ein Lauf liest GOAL.md, die Festlegungen, die Tickets des Repos, `README.md`, `C
 Die Doku ist gedeckelt: Von jeder Datei gehen höchstens 24.000 Zeichen ans Modell, von allen zusammen höchstens 96.000. Die Tickets sind es auch, siehe unten. Was gekürzt oder ausgelassen wurde, steht als Hinweis in der Fläche.
 
 Das Modell antwortet mit einem JSON. Der Mod räumt es auf: Was nicht passt, lässt er weg oder repariert es, und jede Reparatur steht als Hinweis in der Fläche. Die schmale Ansicht nennt nur die Zahl der Hinweise.
+
+## Dauerläufer
+
+Ein Strang ist ein Ziel oder ein Dauerläufer (Entscheidungen 6 bis 8 der Spezifikation). Ein Ziel hat ein Ende. Ein Dauerläufer hat keines und läuft neben den Zielen her: Werkzeug, Tests, Betrieb. Seine Bahn endet im Graphen in einem Pfeil, seine Spalte sagt unten „Dauerläufer: läuft weiter“.
+
+### Wann ein Dauerläufer aktiv ist
+
+Aktiv ist er, wenn eines von beidem gilt:
+
+- **Ein laufender Chat hängt an einem seiner Bündel.** Ein fertiger oder ausgeblendeter Chat zählt nicht.
+- **Ein Ticket eines seiner Bündel wurde in den letzten 7 Tagen geschlossen.** Gezählt wird in ganzen Tagen, nach dem Tag, den das Ticket-System nennt.
+
+Offene Tickets allein zählen nicht, ein neues Label oder ein Kommentar auch nicht. Ohne Tickets zählt nur der Chat. Das ist eine reine Rechnung aus Plan, Chats und Uhr (`hooks/plan/dauer.ts`), bei jedem Zeichnen neu und ohne Modell-Aufruf.
+
+### Was ein Dauerläufer zeigt, der ruht
+
+Ein Dauerläufer, der nicht aktiv ist, ruht. Am Beispiel-Shop: Am „Betrieb“ arbeitet kein Chat, er hat zwei offene Bündel.
+
+- **Im Graphen** stehen seine Bündel aus „Jetzt möglich“ und „Später“ in einer Zeile: „Betrieb: ruht · 2 offen“, blass und mit dem kleinen Punkt. Sie steht dort, wo das erste dieser Bündel stand: in „Jetzt möglich“, wenn eines davon jetzt möglich ist, sonst in „Später“. Sie klappt auf wie „… erledigt“; darunter stehen die Titel der Bündel. Die Übersicht sagt an der Zeile der Bahn „ruht · 2 offen“.
+- **Auf den Karten** zeigt seine Spalte den Kopf und eine Karte „ruht · 2 offen“ statt der Karten seiner offenen Bündel. Ihre Detail-Fläche nennt die Bündel und hat je jetzt möglichem einen Knopf „Auftrag:“ mit dem Titel des Bündels: Sonst ließe sich an ihm aus der Fläche keine Arbeit mehr beginnen.
+- **Was hinter uns liegt,** bleibt die Zeile oder Karte „n erledigt“.
+- **Gezählt** wird, was er offen hat, nicht: „4 Bündel jetzt möglich“ meint die Bündel, die einzeln dastehen.
+- **Neue Aktivität öffnet ihn von selbst:** Sobald ein laufender Chat an einem seiner Bündel hängt oder ein Ticket frisch geschlossen ist, stehen seine Bündel wieder einzeln da. An welchem Bündel ein Chat hängt, sagt das Modell beim Ableiten; ein Chat, der neu beginnt, weckt ihn also erst nach dem nächsten „Neu ableiten“.
+
+### Vom Ziel zum Dauerläufer
+
+Ist in einem Ziel jedes Bündel erledigt, sagen es beide Ansichten in einer Zeile: „Suche hat alles erledigt. Zum Dauerläufer machen?“. Der Knopf daneben legt den Auftrag ins Eingabefeld, das mit dem Nutzer zu klären und dann unter dem Strang `Art: Dauerläufer` in GOAL.md einzutragen. Der Mod schreibt GOAL.md nie. Steht die Zeile dort, zeigt „Neu laden“ den Strang als Dauerläufer, ohne Modell-Aufruf. Ohne GOAL.md steht die Zeile nicht da: Dort steht erst der Hinweis, die Datei anzulegen.
+
+Den Rückweg, vom Dauerläufer zum Ziel, wenn ein großer Umbau ansteht, bietet der Mod nicht an. Wer ihn will, schreibt `Art: Ziel` in GOAL.md.
 
 ## Tickets
 
@@ -266,6 +312,19 @@ Die Chats sind dieselben wie in der schmalen Ansicht. Der Mod schreibt je Sessio
 
 Welcher Chat an welcher Karte hängt, hat das Modell beim Ableiten zugeordnet. Ob er noch läuft und ob er wartet, sagen die Dateien. Ein Chat, der nach dem Ableiten dazukam, steht unter „Chats ohne Karte“ und lässt sich dort wählen. Im Graphen trägt die Zeile desselben Bündels die Marke „Chat“.
 
+### Fertige und stille Chats
+
+Früher blieb ein Chat mit seiner letzten Frage in der Liste, bis der Nutzer ihn herausnahm oder 14 Tage um waren. Seit Version 0.6.0 gehen fertige Chats von selbst.
+
+- **Fertig.** Nach jeder Antwort fasst ein kleiner Modell-Aufruf den Stand des Chats. Er sagt seitdem auch, ob die Arbeit fertig ist: Die Aufgabe, für die der Chat begonnen wurde, ist erledigt, und er wartet auf nichts. Der Auftrag ist vorsichtig: im Zweifel nicht fertig. Ein Chat mit einer offenen Frage ist nie fertig, was auch immer das Modell sagt, und einer, dessen Zusammenfassung ausblieb, auch nicht. In der Datei des Chats steht das als `"fertig": true` oder `false`.
+- **24 Stunden.** Ein fertiger Chat steht noch 24 Stunden nach seiner letzten Antwort in der Liste der schmalen Ansicht: blass, unter den laufenden, mit dem Wort „fertig“. Danach ist er ausgeblendet.
+- **7 Tage.** Ein Chat ohne neue Antwort seit 7 Tagen ist still und ausgeblendet, auch wenn er auf den Nutzer wartet.
+- **Ausgeblendet ist nicht gelöscht.** Die Datei bleibt liegen. Die Liste sagt in einer blassen Zeile, wie viele es sind: „2 fertige oder stille Chats ausgeblendet“. Der Knopf „Zeigen“ daneben blendet sie ein, blass und mit „fertig“ oder „still“, bis neu geladen wird: „Neu laden“, ein neuer Befehl `/graph` oder `/orchestrator`, eine neue Session. Der Takt von 20 Sekunden blendet sie nicht wieder aus.
+- **Eine neue Antwort** in einem fertigen oder ausgeblendeten Chat schreibt seinen Stand neu: Er steht sofort wieder da, und er läuft wieder, wenn die Zusammenfassung ihn nicht erneut fertig nennt.
+- **Herausgenommen bleibt draußen.** Die Knöpfe „Diesen Chat aufnehmen“ und „Diesen Chat herausnehmen“ gelten wie bisher. Wer herausgenommen ist, zählt auch nicht als ausgeblendet. Ein fertiger oder ausgeblendeter Chat ist weiter angemeldet und lässt sich herausnehmen.
+- **Nur ein laufender Chat zählt.** Ein fertiger oder ausgeblendeter Chat markiert keine Zeile und keine Karte mehr, zählt nicht als wartend, löst keinen Hinweis aus, hält keinen Dauerläufer offen und geht nicht als laufender Chat ans Modell.
+- **Alte Dateien** ohne das Feld `fertig` gelten als nicht fertig.
+
 ## Versuch: von hier antworten
 
 In der Detail-Fläche einer Karte, deren Chat auf den Nutzer wartet, steht unter der Überschrift „Versuch: von hier antworten“ ein Eingabefeld und der Knopf „Antwort schicken“.
@@ -298,6 +357,10 @@ Alles liegt lokal unter `~/.claude/ziel-graph/<schlüssel>/`. Der Schlüssel kom
 
 Seit Version 0.5.0 trägt sie die Version 3: Dazugekommen sind unter `fakten` das Ticket-System (`tracker`) und die Zahl der gelesenen Tickets (`tickets`), und unter `umfeld.tickets` je gelesenem Ticket Schlüssel, Titel, ob es geschlossen war, Labels und Zuweisung. Damit lässt sich der Plan auch ohne Ticket-System wieder so zeigen, wie er beim Ableiten stand, und es ist zu sehen, welche Tickets seitdem neu sind. Dateien der Versionen 1 und 2 laden weiter; sie nennen keine Tickets.
 
+Seit Version 0.6.0 steht unter `umfeld.tickets` bei einem geschlossenen Ticket auch der Tag, an dem es geschlossen wurde (`geschlossen`, zum Beispiel `"2026-10-01"`), wenn das Ticket-System ihn nennt. Daran ist auch ohne Ticket-System zu sehen, ob ein Dauerläufer aktiv ist. Die Version bleibt 3: Es ist nur ein Feld mehr, und eine Datei ohne es lädt wie bisher.
+
+Die Datei eines Chats trägt seit Version 0.6.0 das Feld `fertig`. Eine Datei ohne es lädt weiter; ihr Chat gilt als nicht fertig.
+
 Beide Ansichten lesen dieselbe `plan.json`. Ein Plan, den die Version 0.1.0 des Orchestrators unter `~/.claude/orchestrator/<schlüssel>/plan.json` abgelegt hat, wird nicht von selbst übernommen. Die Datei hat dieselbe Form: Wer sie nach `~/.claude/ziel-graph/<schlüssel>/plan/plan.json` kopiert, sieht den alten Plan wieder. Sonst genügt „Neu ableiten“.
 
 ## Aufbau der Fläche
@@ -309,10 +372,10 @@ Die Leiste setzt viele kleine Bilder neben- und untereinander. Kein Bild liegt �
 - Je Band eine Reihe, darin je Strang eine Spalte. Jede Spalte ist in jeder Reihe gleich breit: Ihre Box hat eine Mindestbreite, und jedes Bild ohne Knopf ist so breit wie Karte und Knopf zusammen.
 - Die Breite der Karten folgt der Breite der Leiste. Reicht sie, steht die Detail-Fläche rechts neben den Karten. Sonst steht sie darunter. Reicht es auch für Spalten nicht, stehen die Stränge untereinander.
 - Die Detail-Fläche steht nie über den Karten: Sonst würden die Karten bei jeder Wahl verrutschen.
-- Von oben nach unten: Endziel und Eckdaten, der Stand von GOAL.md, die Knöpfe „Neu ableiten“ und „Neu laden“, das Feld für eine Festlegung, was der letzte Lauf geändert hat, die Karten mit der Detail-Fläche, die Chats ohne Karte, die Liste der Festlegungen, die Hinweise.
+- Von oben nach unten: Endziel und Eckdaten, der Stand von GOAL.md, die Ziele, die alles erledigt haben, die Knöpfe „Neu ableiten“ und „Neu laden“, das Feld für eine Festlegung, was der letzte Lauf geändert hat, die Karten mit der Detail-Fläche, die Chats ohne Karte, die Liste der Festlegungen, die Hinweise.
 - Farben: „Auto“ folgt dem Farbschema, „Hell“ und „Dunkel“ legen es fest.
 
-Für den Beispiel-Shop der Tests (die GOAL.md von oben, 4 Stränge, 11 Bündel) sind das 34 Bilder mit zusammen etwa 26.000 Zeichen Markup (mit festem Farbschema etwa 19.000); das größte Bild hat rund 1.400 Zeichen. Die Engine erlaubt je Bild 131.072.
+Für den Beispiel-Shop der Tests (die GOAL.md von oben, 4 Stränge, 11 Bündel, der Dauerläufer „Betrieb“ ruht) sind das 34 Bilder mit zusammen etwa 25.000 Zeichen Markup (mit festem Farbschema etwa 18.000); das größte Bild hat rund 1.400 Zeichen. Die Engine erlaubt je Bild 131.072.
 
 ## Dateien des Mods
 
@@ -321,8 +384,9 @@ Alles steht unter `plugins/ziel-graph/`. Nur `hooks/register.tsx` fasst die Engi
 | Datei | Inhalt |
 | --- | --- |
 | `hooks/register.tsx` | der Zugang zur Engine: Laden, der Lauf, die Handgriffe aller Knöpfe, die zwei Leisten |
-| `hooks/chats.ts` | die laufenden Chats: ihre Dateien, die Selbst-Anmeldung, der Stand nach einer Antwort; welches Ticket-System das Repo nutzt |
-| `hooks/plan/goal.ts` | GOAL.md lesen, auch den Abschnitt „Tracker“; die Aufträge zum Anlegen, zum Festlegen und zum Eintragen der Festlegungen |
+| `hooks/chats.ts` | die Chats: ihre Dateien, die Selbst-Anmeldung, der Stand nach einer Antwort, wer läuft, wer fertig ist und wer ausgeblendet wird; welches Ticket-System das Repo nutzt |
+| `hooks/plan/goal.ts` | GOAL.md lesen, auch `Art:` und `Wer:` je Strang und den Abschnitt „Tracker“; die Aufträge zum Anlegen, zum Festlegen, zum Dauerläufer und zum Eintragen der Festlegungen |
+| `hooks/plan/dauer.ts` | Dauerläufer: wann einer aktiv ist und welche gerade ruhen |
 | `hooks/plan/quellen.ts` | GOAL.md, Tickets, Doku, Chats und Commits für einen Lauf lesen |
 | `hooks/plan/tickets.ts` | die Tickets: lesen aus GitHub, GitLab und Markdown-Dateien, was die Labels bedeuten, die Zeile fürs Modell |
 | `hooks/plan/frisch.ts` | der frische Stand: aus Plan und Tickets, was erledigt, bereit und blockiert ist |
@@ -330,12 +394,12 @@ Alles steht unter `plugins/ziel-graph/`. Nur `hooks/register.tsx` fasst die Engi
 | `hooks/plan/ableiten.ts` | der Auftrag ans Modell, die Eingabe mit Festlegungen und vorigem Plan, das Aufräumen der Antwort zum Plan |
 | `hooks/plan/vergleich.ts` | der neue Plan gegen den vorigen: was sich geändert hat |
 | `hooks/plan/lauf.ts` | ein Lauf von Anfang bis Ende; Speichern und Laden |
-| `hooks/plan/lesen.ts` | was beide Ansichten aus dem Plan in denselben Worten sagen, auch zu Festlegungen und Änderungen |
+| `hooks/plan/lesen.ts` | was beide Ansichten aus dem Plan in denselben Worten sagen, auch zu Festlegungen, zu Änderungen und zu Zielen, die alles erledigt haben |
 | `hooks/karten/karten.ts` | aus Plan und Chats werden Karten, Detail-Fläche und Aufträge |
 | `hooks/karten/zeichnen.ts` | die Bilder und die Anordnung der Fläche |
 | `hooks/karten/leiste.tsx` | die breite Leiste, ohne Engine |
 | `hooks/karten/antwort.tsx` | der Versuch: von hier antworten |
-| `hooks/graph/…` | die schmale Ansicht: aus dem Plan werden Zeilen, das Bild „Ruhig“, die Streifen, die Leiste |
+| `hooks/graph/…` | die schmale Ansicht: aus dem Plan werden Zeilen, das Bild „Ruhig“ mit einer Zeile für Erledigtes und für einen Dauerläufer, der ruht, die Streifen, die Leiste mit der Liste der Chats |
 | `hooks/probe.ts` | zum Prüfen ohne App: aus dem Text einer `plan.json` der Graph und ein Bild der Karten |
 | `types/index.d.ts` | die Form des Plans und des Zustands |
 
@@ -347,7 +411,13 @@ Alles steht unter `plugins/ziel-graph/`. Nur `hooks/register.tsx` fasst die Engi
 - **`gh issue list --state closed --limit 30`** ordnet wohl nach dem Anlegen, nicht nach dem Schließen; nachgeprüft ist das nicht. Dann stimmt „zuletzt geschlossen“ bei GitHub nur ungefähr: Ein altes Ticket, das gerade geschlossen wurde, kann in der Eingabe fehlen. Der frische Stand merkt es trotzdem, weil es nicht mehr unter den offenen steht.
 - **Verknüpfungen** zwischen Tickets liest der Mod nicht als solche, weder die von GitLab noch die von GitHub (`blockedBy`). Was ein Ticket blockiert, erfährt das Modell aus Labels und aus der Zeile „Blocked by“ im Text. Der frische Stand rechnet nur mit Labels und mit dem, worauf ein Bündel laut Plan wartet.
 - **Ob das Modell die Regeln für Tickets befolgt** (Bündel statt einzelner Tickets, Bereichs-Labels, Zuweisung), zeigt erst ein echter Lauf in einem Repo mit Tickets.
-- **Ziel-Karten, Zuständigkeit je Bahn und das Ausblenden nach Personen** (Entscheidungen 13 und 14 der Spezifikation) gibt es weiter nicht. Wer ein Bündel macht, steht nur in seiner zweiten Zeile.
+- **Ziel-Karten und das Ausblenden nach Personen** (Entscheidungen 13 und 14 der Spezifikation) gibt es weiter nicht. Wer einen Strang macht, steht seit Version 0.6.0 bei seinem Namen; wer ein Bündel macht, weiter in dessen zweiter Zeile. Anders als Entscheidung 14 es sagt, kommt die Person eines Strangs aus der Zeile `Wer:` in GOAL.md, nicht aus einer Festlegung, und ein einzelnes Bündel weicht nur über die Zuweisung im Ticket-System ab.
+- **Fertige Chats** sind nur gegen die Test-Engine und mit erfundenen Antworten geprüft. Ob das Modell „fertig“ vorsichtig genug setzt, zeigt erst die App. Setzt es das Feld zu früh, verschwindet ein Chat nach 24 Stunden aus der Liste; er steht dann unter den ausgeblendeten, und seine nächste Antwort holt ihn zurück.
+- **Die ausgeblendeten Chats werden nie weniger:** Der Mod löscht keine Datei. Über Monate wächst die Zahl in der Zeile, und „Zeigen“ listet sie alle. Ob und wann alte Dateien wegfallen, ist nicht entschieden.
+- **Dauerläufer** sind nur gegen die Test-Engine geprüft. Wie die Zeile und die Karte „ruht“ in der App aussehen, ist nicht angesehen.
+- **Ein geschlossenes Ticket ohne Tag zählt nicht als Aktivität.** Den Tag kennt der Mod nur von den 30 zuletzt geschlossenen Tickets, die er liest. Ein älteres Ticket, das gerade geschlossen wurde und dort fehlt, gilt als geschlossen, hält seinen Dauerläufer aber nicht offen. Bei GitHub kann das öfter vorkommen, siehe den Punkt zu `gh issue list` oben.
+- **Bei Tickets als Markdown** gilt ohne eine Zeile wie `Closed: 2026-10-01` der Tag, an dem die Datei zuletzt geschrieben wurde, als Tag des Schließens. Wer eine geschlossene Datei noch einmal anfasst, hält ihren Dauerläufer deshalb 7 Tage offen, obwohl bloßes Anfassen nicht zählen soll.
+- **Vom Ziel zum Dauerläufer** fragt der Mod selbst, sobald jedes Bündel eines Ziels erledigt ist; das ableitende Modell schlägt es nicht vor. Die Antwort des Nutzers ist die Zeile `Art: Dauerläufer` in GOAL.md, keine Festlegung (anders als Entscheidung 7 es sagt). Den Rückweg bietet der Mod nicht an.
 - **Festlegungen und Fortschreiben** sind nur gegen die Test-Engine und mit erfundenen Antworten geprüft. Ob das Modell die Festlegungen befolgt und ob der Plan mit dem vorigen als Vorgabe wirklich ruhiger wird, zeigt erst ein echter Lauf. Ob das Feld für eine Festlegung nach „Festlegen“ in der App leer dasteht, auch.
 - **Was hinter uns liegt, wächst.** Beim Fortschreiben bleibt jedes erledigte Bündel eine eigene Zeile des Plans, damit kein Lauf Erledigtes neu zusammenfasst und das als Änderung erscheint. Beide Ansichten fassen es je Strang zusammen. Über viele Läufe kann der Plan so an die Grenze von 40 Bündeln stoßen; wann und wie Erledigtes dann aus dem Plan fällt, ist nicht entschieden.
 - **Vorschläge** des ableitenden Modells, die der Nutzer mit Ja oder Nein beantwortet (Entscheidung 16 der Spezifikation), gibt es noch nicht, und keinen Merge Request auf Knopfdruck: Den Eintrag in GOAL.md macht der Chat auf Zuruf.

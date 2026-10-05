@@ -51,5 +51,9 @@ export const eindeutig = (wunsch: string, vergeben: Set<string>): string => {
 export const mehrzahl = (anzahl: number, eins: string, viele: string): string =>
   `${anzahl} ${anzahl === 1 ? eins : viele}`
 
+// Der Name eines Strangs und dahinter, wer ihn macht: „Kasse · Mara“. Ohne Person nur der Name.
+export const mitPerson = (name: string, wer: string | undefined): string =>
+  wer === undefined || wer === '' ? name : `${name} · ${wer}`
+
 // Eine Dauer in ganzen Sekunden, nie weniger als eine.
 export const sekunden = (ms: number): number => Math.max(1, Math.round(ms / 1000))

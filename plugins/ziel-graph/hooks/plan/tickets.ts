@@ -39,8 +39,12 @@ export type Ticket = {
 }
 
 // Ein Ticket, so viel sich der Plan davon merkt: genug, um ihn ohne das Ticket-System wieder
-// so zu zeigen, wie er beim Ableiten dastand.
-export type MerkTicket = Pick<Ticket, 'schluessel' | 'titel' | 'zu' | 'labels' | 'zugewiesen'>
+// so zu zeigen, wie er beim Ableiten dastand. Der Tag, an dem es geschlossen wurde, steht
+// nur bei einem geschlossenen Ticket da, das ihn nennt: An ihm ist zu sehen, ob ein
+// Dauerläufer gerade aktiv ist.
+export type MerkTicket = Pick<Ticket, 'schluessel' | 'titel' | 'zu' | 'labels' | 'zugewiesen'> & {
+  geschlossen?: string
+}
 
 // Was das Ticket-System gerade nennt.
 export type TicketLage = {
@@ -463,13 +467,14 @@ export const merke = (liste: readonly Ticket[]): MerkTicket[] =>
     zu: one.zu,
     labels: one.labels,
     zugewiesen: one.zugewiesen,
+    ...(one.zu && one.geschlossen !== '' ? { geschlossen: one.geschlossen } : {}),
   }))
 
 const texte = (wert: unknown): string[] =>
   (Array.isArray(wert) ? wert : []).filter((one): one is string => typeof one === 'string')
 
 // Die gemerkten Tickets aus einer Plan-Datei, so weit sie brauchbar sind. Eine Datei von vor
-// Version 0.5.0 nennt keine.
+// Version 0.5.0 nennt keine, eine von vor Version 0.6.0 keinen Tag des Schließens.
 export const leseGemerkte = (wert: unknown): MerkTicket[] =>
   (Array.isArray(wert) ? wert : []).flatMap((one: unknown): MerkTicket[] =>
     istObjekt(one) && typeof one.schluessel === 'string' && one.schluessel !== ''
@@ -480,6 +485,7 @@ export const leseGemerkte = (wert: unknown): MerkTicket[] =>
             zu: one.zu === true,
             labels: texte(one.labels),
             zugewiesen: texte(one.zugewiesen),
+            ...(one.zu === true && tag(one.geschlossen) !== '' ? { geschlossen: tag(one.geschlossen) } : {}),
           },
         ]
       : [],

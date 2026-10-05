@@ -12,13 +12,17 @@ import type {
 import { alter, nameVon } from '../chats'
 import { MODELL } from '../fest'
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
+import { ruhende } from '../plan/dauer'
 import { neueTicketsZeile } from '../plan/frisch'
 import {
   aenderungsListe,
   aenderungsZeile,
+  dauerAuftrag,
   endzielAuftrag,
   endzielZeile,
   faktenZeile,
+  fertigZeile,
+  fertigeZiele,
   festAuftrag,
   festZeile,
   goalAuftrag,
@@ -26,6 +30,7 @@ import {
   strangAuftrag,
 } from '../plan/lesen'
 import type { Taten, Teile } from '../teile'
+import { mitPerson } from '../worte'
 import { LEERER_PLAN } from '../zustand'
 
 import { auftragFuer, chatId, chatMarke, detail, erklaerungFuer, sicht, zeichenText } from './karten'
@@ -195,7 +200,7 @@ const zeichneListe = (teile: Teile, plan: ZielGraphPlan, bild: Sicht, taten: Tat
         <Text bold>STRÄNGE</Text>
         {bild.spalten.map(spalte => (
           <Box flexDirection="column">
-            <Text wrap="wrap">{`${spalte.strang.name} — ${spalte.kopf.join(' · ')}`}</Text>
+            <Text wrap="wrap">{`${mitPerson(spalte.strang.name, spalte.wer)} — ${spalte.kopf.join(' · ')}`}</Text>
             {spalte.ohneZiel && (
               <Box>
                 <Button
@@ -317,6 +322,23 @@ const zeichneDetail = (
           )}
         </Box>
       )}
+      {(karte.auftraege ?? []).length > 0 && (
+        <Box flexDirection="column">
+          <Text dimColor wrap="wrap">
+            {'Seine Bündel haben gerade keine eigene Karte. Arbeitet ein Chat an einem davon, ' +
+              'stehen sie nach dem nächsten Ableiten wieder da.'}
+          </Text>
+          <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
+            {(karte.auftraege ?? []).map(one => (
+              <Button
+                key={`auftrag-${one.id}`}
+                label={`Auftrag: ${one.titel}`}
+                onPress={() => taten.lege({ text: auftragFuer(plan, one.id), was: 'Der Auftrag' })}
+              />
+            ))}
+          </Box>
+        </Box>
+      )}
       <Box key={PLATZ} flexDirection="column" />
     </Box>
   )
@@ -419,6 +441,39 @@ const zeichneGoal = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): Rende
         'hier; „Neu ableiten“ ordnet die Bündel neu zu.'}
     </Text>
   ) : null
+}
+
+// Ziele, in denen jedes Bündel erledigt ist: je Strang eine Zeile mit der Frage, ob er zum
+// Dauerläufer wird, und dem Knopf, der den Auftrag dazu ins Eingabefeld legt. Den Eintrag
+// in GOAL.md macht der Chat. Ohne GOAL.md steht erst deren Hinweis da.
+const zeichneFertige = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): RenderElement | null => {
+  const { Box, Text, Button } = teile
+  const { goal, plan } = stand
+
+  if (plan === null || !goal.vorhanden || goal.leer) {
+    return null
+  }
+
+  const fertige = fertigeZiele(plan)
+
+  if (fertige.length === 0) {
+    return null
+  }
+
+  return (
+    <Box flexDirection="column">
+      {fertige.map(strang => (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+          <Text wrap="wrap">{fertigZeile(strang)}</Text>
+          <Button
+            key={`dauer-${strang.id}`}
+            label="Zum Dauerläufer machen"
+            onPress={() => taten.lege(dauerAuftrag(plan, strang.id))}
+          />
+        </Box>
+      ))}
+    </Box>
+  )
 }
 
 // Das Feld für eine neue Festlegung, immer da und an keine Karte gebunden: gleich unter
@@ -534,16 +589,18 @@ const zeichneFestListe = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): 
   )
 }
 
-// Die ganze Leiste: Kopf und Knöpfe, der Stand von GOAL.md, das Feld für eine Festlegung,
-// was der letzte Lauf geändert hat, die Karten, die Detail-Fläche, die Festlegungen und was
-// beim Ableiten aufgefallen ist.
+// Die ganze Leiste: Kopf und Knöpfe, der Stand von GOAL.md, die Ziele, die alles erledigt
+// haben, das Feld für eine Festlegung, was der letzte Lauf geändert hat, die Karten, die
+// Detail-Fläche, die Festlegungen und was beim Ableiten aufgefallen ist.
 export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten): RenderElement => {
   const { Box, Text, Button } = teile
   const { stand, laufend, wahl } = lage
   const plan = stand.plan ?? LEERER_PLAN
   // Offene Tickets, die es beim letzten Ableiten noch nicht gab: Sie stehen in keinem Bündel.
   const neue = neueTicketsZeile(stand.neueTickets)
-  const bild = sicht(plan, laufend, wahl.wahl, stand.aenderungen)
+  // Ein Dauerläufer, an dem gerade niemand arbeitet, ruht: Seine Spalte zeigt eine Karte.
+  const ruhend = ruhende(plan, laufend, laufend.gelesen || stand.gelesen)
+  const bild = sicht(plan, laufend, wahl.wahl, stand.aenderungen, ruhend)
   const flaeche =
     stand.plan === null || teile.Svg === null ? null : baueFlaeche(bild, { zellen: lage.zellen, farben: wahl.farben })
   const steht = flaeche?.art === 'neben'
@@ -587,6 +644,7 @@ export const zeichneKartenLeiste = (teile: Teile, lage: KartenLage, taten: Taten
       )}
 
       {zeichneGoal(teile, stand, taten)}
+      {zeichneFertige(teile, stand, taten)}
       {zeichneKopf(teile, lage, taten)}
       {zeichneFestEingabe(teile, lage, taten)}
       {zeichneAenderungen(teile, stand)}

@@ -30,7 +30,8 @@ import type { GraphBahn, GraphDaten, GraphKnoten, GraphZeile } from './daten'
 // Bahn, je Bündel eine Zeile, darunter der Stamm mit Zwischenzielen und Endziel. Der Plan
 // selbst bleibt, wie er ist; die Karten lesen denselben. Kein `$`, kein Bild.
 
-// Der Plan kennt keine Personen: Alle Bahnen gehören dem Nutzer.
+// Zum Ausblenden kennt der Graph Personen; der Plan füllt sie noch nicht: Alle Bahnen
+// gehören dem Nutzer. Wer einen Strang laut GOAL.md macht, steht nur in der Legende.
 const PERSON = 'ich'
 const MAX_META = 90
 // So viel vom Titel des Ziels passt hinter „wartet auf: “ in die zweite Zeile.
@@ -185,6 +186,7 @@ export const graphDaten = (
       person: PERSON,
       art: one.art,
       begonnen: plan.buendel.some(eines => eines.strang === one.id && eines.zone === 'hinter'),
+      ...((one.wer ?? '') === '' ? {} : { wer: one.wer }),
       farbe: one.farbe,
     }),
   )

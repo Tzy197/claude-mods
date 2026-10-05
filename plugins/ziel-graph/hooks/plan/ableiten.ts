@@ -61,6 +61,8 @@ Steht <goal> in der Eingabe, gelten diese Regeln vor allen anderen:
 - Die Stränge aus GOAL.md sind die Spalten. Unter "bahnen" stehen sie zuerst, in ihrer Reihenfolge, jeder mit genau der id und genau dem Namen aus <goal-gelesen>. Du benennst keinen Strang um, legst keine zwei zusammen, teilst keinen und lässt keinen weg, auch wenn er noch kein Bündel hat.
 - Jedes Bündel ordnest du einem dieser Stränge zu. Nur wenn die anderen Quellen Arbeit nennen, die in keinen Strang aus GOAL.md passt, hängst du dafür eine weitere Bahn hinten an. Das Programm zeigt sie als „nicht in GOAL.md“.
 - Hat ein Strang in GOAL.md ein Ziel, bleibt sein "ziel" leer (""): Das Programm nimmt es aus GOAL.md. Hat er dort keines, darfst du unter "ziel" nennen, was die anderen Quellen dazu sagen. Das Programm zeigt es als vermutet.
+- Nennt GOAL.md die Art eines Strangs („Art: Dauerläufer“ oder „Art: Ziel“, in <goal-gelesen> steht sie dann dabei), gilt sie: Unter "art" steht für ihn genau das, "dauer" oder "ziel". Nennt GOAL.md keine, entscheidest du.
+- Nennt GOAL.md, wer einen Strang macht („Wer: …“), zeigt das Programm es selbst: In "meta" nennst du es nicht.
 - Das Endziel übernimmst du wörtlich aus GOAL.md, auch wenn es lang ist. Ist es dort offen, nennst du das Endziel, das die anderen Quellen nennen, und sonst "".
 - Nennt GOAL.md Zwischenziele, stehen sie unter "stamm" zuerst, in ihrer Reihenfolge, jedes mit genau der id und dem Wortlaut aus <goal-gelesen> und mit "art": "zwischenziel". Du änderst keines, lässt keines weg und fügst keines hinzu. Einen Treffpunkt setzt du dann nicht.
 - Nennt GOAL.md keine Stränge oder keine Zwischenziele, leitest du nur diesen Teil aus den anderen Quellen ab.
@@ -254,7 +256,8 @@ const goalGelesen = (goal: Goal): string =>
           .map(
             one =>
               `- id "${one.id}": ${one.name} · ${one.ziel === '' ? 'kein Ziel festgelegt' : `Ziel: ${one.ziel}`}` +
-              (one.gehoertZu === '' ? '' : ` · gehört zu "${one.gehoertZu}"`),
+              (one.gehoertZu === '' ? '' : ` · gehört zu "${one.gehoertZu}"`) +
+              (one.art === '' ? '' : ` · Art: ${one.art === 'dauer' ? 'Dauerläufer' : 'Ziel'}`),
           )
           .join('\n')}`,
   ].join('\n')
@@ -453,7 +456,11 @@ const unbekannt = (wert: unknown): string =>
   sauber(wert, 30) === '' ? 'fehlt' : `„${sauber(wert, 30)}“ ist unbekannt`
 
 // Ein Strang, solange aufgeräumt wird.
-type RohStrang = Omit<ZielGraphStrang, 'farbe'> & {
+type RohStrang = Omit<ZielGraphStrang, 'farbe' | 'wer'> & {
+  // wer den Strang macht, laut GOAL.md; '' ohne
+  wer: string
+  // true: GOAL.md nennt die Art des Strangs. Dann gilt sie, was auch immer das Modell sagt.
+  istArtFest: boolean
   // true: Das Modell hat den Strang unter "bahnen" genannt
   genannt: boolean
 }
@@ -547,16 +554,19 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
   const ausGoal: RohStrang[] = []
   const weitere: RohStrang[] = []
 
-  // Zuerst die Stränge aus GOAL.md: Name, Ziel und Reihenfolge stehen fest.
+  // Zuerst die Stränge aus GOAL.md: Name, Ziel und Reihenfolge stehen fest, und die Art,
+  // wenn GOAL.md sie nennt.
   for (const einer of goal.straenge) {
     const strang: RohStrang = {
       id: eindeutig(einer.id, strangIds),
       name: einer.name,
-      art: 'ziel',
+      art: einer.art === '' ? 'ziel' : einer.art,
       ziel: einer.ziel,
       vermutung: '',
       inGoal: true,
       gehoertZu: einer.gehoertZu,
+      wer: sauber(einer.wer, MAX_NAME),
+      istArtFest: einer.art !== '',
       genannt: false,
     }
 
@@ -584,7 +594,8 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
     const bekannt = finde(strangVon, genannt) ?? finde(strangVon, name)
 
     if (bekannt?.inGoal === true) {
-      // Ein Strang aus GOAL.md: Vom Modell zählt nur die Art und, ohne Ziel dort, die Vermutung.
+      // Ein Strang aus GOAL.md: Vom Modell zählt nur die Art, wenn GOAL.md keine nennt, und,
+      // ohne Ziel dort, die Vermutung.
       if (kennung(name) !== kennung(bekannt.name)) {
         warnungen.push(`Das Modell nennt den Strang „${bekannt.name}“ aus GOAL.md „${name}“: Es gilt der Name aus GOAL.md.`)
       }
@@ -592,7 +603,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
       if (bekannt.genannt) {
         warnungen.push(`Das Modell nennt den Strang „${bekannt.name}“ aus GOAL.md zweimal („${name}“): Beide gelten als dieser eine Strang.`)
       } else {
-        bekannt.art = art
+        bekannt.art = bekannt.istArtFest ? bekannt.art : art
         bekannt.vermutung = bekannt.ziel === '' ? vermutung : ''
       }
 
@@ -623,6 +634,8 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
       vermutung,
       inGoal: false,
       gehoertZu: '',
+      wer: '',
+      istArtFest: false,
       genannt: true,
     }
 
@@ -1040,6 +1053,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
         vermutung: one.vermutung,
         inGoal: one.inGoal,
         gehoertZu: zwischenzielId.get(one.gehoertZu) ?? '',
+        ...(one.wer === '' ? {} : { wer: one.wer }),
         farbe: farbeVon(i),
       })),
       buendel: sortiert,

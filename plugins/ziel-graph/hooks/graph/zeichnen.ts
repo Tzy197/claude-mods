@@ -1,5 +1,7 @@
 import type { ZielGraphFarben, ZielGraphZone } from '../../types'
 
+import { mitPerson } from '../worte'
+
 import { STAMM } from './daten'
 import type { GraphBahn, GraphDaten, GraphKnoten, GraphWahl, GraphZeile } from './daten'
 
@@ -114,7 +116,8 @@ export const sicht = (daten: GraphDaten, zustand: GraphWahl): Sicht => {
     }
   }
 
-  const jetzt = daten.schritte.filter(one => one.zone === 'jetzt' && istSichtbar(one))
+  // Ein Dauerläufer, der ruht, zählt nicht mit: An ihm arbeitet gerade niemand.
+  const jetzt = daten.schritte.filter(one => one.zone === 'jetzt' && one.art !== 'ruht' && istSichtbar(one))
   const laufen = jetzt.filter(one => one.chat !== undefined).length
   const warten = jetzt.filter(one => one.chat === 'wartet').length
 
@@ -138,6 +141,7 @@ export const ZEICHEN: Record<GraphKnoten, string> = {
   bereit: '○',
   teilweise: '◐',
   blockiert: '·',
+  ruht: '·',
   treffpunkt: '◆',
   stamm: '○',
   endziel: '◎',
@@ -147,6 +151,13 @@ export const chatMarke = (zeile: GraphZeile): string =>
   zeile.chat === undefined ? '' : zeile.chat === 'wartet' ? ' [Chat · wartet auf dich]' : ' [Chat]'
 
 export const klappZeichen = (offen: boolean): string => (offen ? '▾' : '▸')
+
+// Eine Zeile, die zurücktritt: Erledigtes, Blockiertes und ein Dauerläufer, der ruht.
+export const istLeise = (zeile: GraphZeile): boolean =>
+  zeile.art === 'erledigt' || zeile.art === 'blockiert' || zeile.art === 'ruht'
+
+// Wie eine Bahn in der Legende heißt: ihr Name und dahinter, wer sie macht.
+export const bahnName = (bahn: GraphBahn): string => mitPerson(bahn.name, bahn.wer)
 
 // ---------- SVG ----------
 
@@ -314,13 +325,14 @@ export const zeichneSvg = (
   ): string =>
     `<text x="${x}" y="${y}" font-size="${groesse}" font-weight="${gewicht}"${farbe({ f: rolle })}${mehr}>${esc(inhalt)}</text>`
 
-  // Legende: je sichtbarer Bahn ein Farbpunkt mit Namen, mit Umbruch.
+  // Legende: je sichtbarer Bahn ein Farbpunkt mit Namen und dahinter, wer sie macht, mit Umbruch.
   const xLinks = SPALTE_0 - 4
   let xLegende = xLinks
   let yLegende = LEGENDE - 12
 
   for (const bahn of bild.bahnen) {
-    const breite = 15 + Math.ceil(bahn.name.length * 7) + 14
+    const name = bahnName(bahn)
+    const breite = 15 + Math.ceil(name.length * 7) + 14
 
     if (xLegende + breite > xRand && xLegende > xLinks) {
       xLegende = xLinks
@@ -328,7 +340,7 @@ export const zeichneSvg = (
     }
 
     knoten.push(`<circle cx="${xLegende + 5}" cy="${yLegende - 5}" r="5"${farbe({ f: `b-${bahn.id}` })}/>`)
-    texte.push(text(xLegende + 15, yLegende, bahn.name, 13, 500, 'leise'))
+    texte.push(text(xLegende + 15, yLegende, kuerze(name, xRand - xLegende - 15, 13, false), 13, 500, 'leise'))
     xLegende += breite
   }
 
@@ -412,7 +424,7 @@ export const zeichneSvg = (
         `<circle cx="${x}" cy="${cy}" r="8" stroke-width="3"${grund}/>` +
           `<path d="M${x} ${cy - 8} A8 8 0 0 0 ${x} ${cy + 8} Z"${farbe({ f: k })}/>`,
       )
-    } else if (zeile.art === 'blockiert') {
+    } else if (zeile.art === 'blockiert' || zeile.art === 'ruht') {
       knoten.push(`<circle cx="${x}" cy="${cy}" r="4.5" stroke-width="2" opacity="0.75"${grund}/>`)
     } else if (zeile.art === 'treffpunkt') {
       knoten.push(
@@ -425,7 +437,7 @@ export const zeichneSvg = (
       )
     }
 
-    const istLeise = zeile.art === 'erledigt' || zeile.art === 'blockiert'
+    const leise = istLeise(zeile)
     const istFett = zeile.art === 'treffpunkt' || zeile.art === 'endziel'
     const hatChat = zeile.chat !== undefined
     // Der Titel beginnt gleich nach den Bahnen und endet vor der Chat-Marke.
@@ -437,8 +449,8 @@ export const zeichneSvg = (
         cy - 1,
         kuerze(zeile.titel, platz, 15, true),
         15,
-        istFett ? 700 : istLeise ? 500 : 600,
-        istLeise ? 'leise' : 'schrift',
+        istFett ? 700 : leise ? 500 : 600,
+        leise ? 'leise' : 'schrift',
       ),
     )
 
@@ -578,7 +590,7 @@ export const zeichneSvg = (
     : ''
   const alt =
     `Ziel-Graph, Ansicht ${bild.ansicht === 'schritte' ? 'Schritte' : 'Übersicht'}. ` +
-    `Bahnen: ${bild.bahnen.map(one => one.name).join(', ') || 'keine'}. ${worte.join(' ')}`
+    `Bahnen: ${bild.bahnen.map(bahnName).join(', ') || 'keine'}. ${worte.join(' ')}`
   const source =
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${BREITE} ${hoehe}" width="${BREITE}" height="${hoehe}" role="img" aria-label="${esc(alt)}">` +
     dunkel +

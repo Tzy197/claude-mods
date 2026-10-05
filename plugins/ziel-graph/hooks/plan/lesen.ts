@@ -19,13 +19,14 @@ import { kennung, mehrzahl, sekunden } from '../worte'
 
 import { ZONEN_NAME } from './ableiten'
 import { fortschritt } from './frisch'
-import { promptEndziel, promptFestlegungen, promptGoalAnlegen, promptStrangZiel } from './goal'
+import { promptDauerlaeufer, promptEndziel, promptFestlegungen, promptGoalAnlegen, promptStrangZiel } from './goal'
 import type { StrangFrage } from './goal'
 import { TRACKER_NAME, ticketName } from './tickets'
 
 // Was beide Ansichten aus dem einen Plan lesen, in denselben Worten: das Endziel als Zeile,
-// die Eckdaten des Laufs, die Chats und die Tickets an einem Bündel, die Festlegungen, was
-// der letzte Lauf geändert hat, und die Aufträge zu GOAL.md. Kein `$`.
+// die Eckdaten des Laufs, die Chats und die Tickets an einem Bündel, welches Ziel alles
+// erledigt hat, die Festlegungen, was der letzte Lauf geändert hat, und die Aufträge zu
+// GOAL.md. Kein `$`.
 
 // Das Endziel als eine Zeile, so wie es über dem Plan, im Graphen und auf seiner Karte steht.
 export const endzielZeile = (plan: ZielGraphPlan): string =>
@@ -102,6 +103,21 @@ export const mitFortschritt = (eines: Pick<ZielGraphBuendel, 'tickets'>, grund: 
 
 // Die Stränge, für die kein Ziel festgelegt ist.
 export const ohneZiel = (plan: ZielGraphPlan): ZielGraphStrang[] => plan.straenge.filter(one => one.ziel === '')
+
+// ---------- Ziele, die alles erledigt haben ----------
+
+// Die Ziele, in denen jedes Bündel erledigt ist: Sie haben ihre Basis erreicht und können
+// zum Dauerläufer werden. Ein Strang ohne Bündel hat noch nichts erledigt.
+export const fertigeZiele = (plan: ZielGraphPlan): ZielGraphStrang[] =>
+  plan.straenge.filter(strang => {
+    const eigene = plan.buendel.filter(one => one.strang === strang.id)
+
+    return strang.art === 'ziel' && eigene.length > 0 && eigene.every(one => one.stand === 'erledigt')
+  })
+
+// Die eine Zeile dazu, in beiden Ansichten dieselbe.
+export const fertigZeile = (strang: Pick<ZielGraphStrang, 'name'>): string =>
+  `${strang.name} hat alles erledigt. Zum Dauerläufer machen?`
 
 // Der Stand eines Bündels in Worten.
 export const STAND_WORT: Record<ZielGraphStand, string> = {
@@ -301,6 +317,24 @@ export const strangAuftrag = (plan: ZielGraphPlan, id: string): Auftrag => {
   const frage = strangFrage(plan, id)
 
   return { text: frage === null ? null : promptStrangZiel(frage), was: 'Der Auftrag „Ziel festlegen“' }
+}
+
+// Der Auftrag, einen Strang, der alles erledigt hat, in GOAL.md zum Dauerläufer zu machen.
+// Schreiben tut der Chat, wenn der Nutzer zustimmt: Der Mod schreibt GOAL.md nie.
+export const dauerAuftrag = (plan: ZielGraphPlan, id: string): Auftrag => {
+  const strang = plan.straenge.find(one => one.id === id)
+
+  return {
+    text:
+      strang === undefined
+        ? null
+        : promptDauerlaeufer({
+            name: strang.name,
+            inGoal: strang.inGoal,
+            erledigt: plan.buendel.filter(one => one.strang === strang.id && one.stand === 'erledigt').map(one => one.titel),
+          }),
+    was: 'Der Auftrag „Zum Dauerläufer machen“',
+  }
 }
 
 // Der Auftrag, die Festlegungen in GOAL.md einzutragen, die erst lokal liegen.

@@ -17,6 +17,8 @@ export type GraphBahn = {
   art: 'ziel' | 'dauer'
   // true: es liegt schon etwas hinter uns, die Bahn ist oben durchgezogen
   begonnen: boolean
+  // wer die Bahn macht, laut GOAL.md: Die Legende nennt ihn hinter dem Namen. Fehlt ohne.
+  wer?: string
   farbe: { hell: string; dunkel: string }
 }
 
@@ -26,6 +28,8 @@ export type GraphKnoten =
   | 'bereit'
   | 'teilweise'
   | 'blockiert'
+  // die eine Zeile eines Dauerläufers, der ruht
+  | 'ruht'
   | 'treffpunkt'
   | 'stamm'
   | 'endziel'

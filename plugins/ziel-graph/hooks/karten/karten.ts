@@ -11,6 +11,7 @@ import type {
 import { nameVon } from '../chats'
 import { ENDZIEL } from '../fest'
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
+import { AKTIV_TAGE, KEINER_RUHT } from '../plan/dauer'
 import {
   STAND_WORT,
   aenderungsMarke,
@@ -44,7 +45,9 @@ export type KartenZeichen =
 export type Karte = {
   // der Schlüssel der Karte: an ihm hängen die Auswahl und der Knopf
   id: string
-  art: 'buendel' | 'fertig' | 'stamm' | 'endziel'
+  // 'fertig': die eine Karte für alles, was hinter uns liegt. 'ruht': die eine Karte eines
+  // Dauerläufers, der ruht, statt seiner offenen Bündel.
+  art: 'buendel' | 'fertig' | 'ruht' | 'stamm' | 'endziel'
   // id des Strangs; '' auf dem Stamm
   strang: string
   zone: ZielGraphZone | 'stamm'
@@ -62,6 +65,8 @@ export type Spalte = {
   strang: ZielGraphStrang
   // true: Für den Strang ist kein Ziel festgelegt
   ohneZiel: boolean
+  // wer den Strang laut GOAL.md macht: Der Kopf nennt ihn hinter dem Namen. '' ohne.
+  wer: string
   // die Zeilen unter dem Namen, höchstens zwei
   kopf: string[]
   // wohin die Spalte unten führt: „→ Großer Umbau“
@@ -82,6 +87,7 @@ export type Sicht = {
 
 // Zwei Bindestriche kommen in keiner Kennung vor: So stößt kein Schlüssel an ein Bündel.
 export const fertigId = (strang: string): string => `fertig--${strang}`
+export const ruhtId = (strang: string): string => `ruht--${strang}`
 export const chatId = (sitzung: string): string => `chat--${sitzung}`
 
 const ZEICHEN_TEXT: Record<KartenZeichen, string> = {
@@ -145,17 +151,21 @@ const wohinVon = (plan: ZielGraphPlan, strang: ZielGraphStrang): string => {
 // Macht aus dem Plan und den laufenden Chats, was die Fläche zeigt. `wahl` ist die Karte,
 // die der Nutzer gewählt hat; ohne Wahl gilt die erste, an der ein Chat auf ihn wartet.
 // `aenderungen` ist, was der letzte Lauf geändert hat: Eine Karte, die er neu gebracht,
-// verschoben oder umbenannt hat, sagt das vorn in ihrer zweiten Zeile.
+// verschoben oder umbenannt hat, sagt das vorn in ihrer zweiten Zeile. `ruhend` sind die
+// Dauerläufer, die ruhen: Ihre Spalte zeigt statt der offenen Bündel eine Karte.
 export const sicht = (
   plan: ZielGraphPlan,
   chats: ZielGraphChats,
   wahl: string,
   aenderungen: ZielGraphAenderungen | null = null,
+  ruhend: ReadonlySet<string> = KEINER_RUHT,
 ): Sicht => {
   const alle: Karte[] = []
   const spalten = plan.straenge.map((strang): Spalte => {
     const eigene = plan.buendel.filter(one => one.strang === strang.id)
     const fertig = eigene.filter(one => one.zone === 'hinter')
+    const offene = eigene.filter(one => one.zone !== 'hinter')
+    const ruht = ruhend.has(strang.id) && offene.length > 0
     const karten: Record<ZielGraphZone, Karte[]> = { hinter: [], jetzt: [], spaeter: [] }
 
     if (fertig.length > 0) {
@@ -173,9 +183,27 @@ export const sicht = (
       })
     }
 
-    for (const eines of eigene.filter(one => one.zone !== 'hinter')) {
-      const offene = laufende(eines, chats)
-      const chat = offene.some(one => one.frage !== '') ? 'wartet' : offene.length > 0 ? 'laeuft' : ''
+    if (ruht) {
+      // Ist eines der Bündel jetzt möglich, steht die Karte in „Jetzt möglich“, sonst in „Später“.
+      const zone = offene.some(one => one.zone === 'jetzt') ? 'jetzt' : 'spaeter'
+
+      karten[zone].push({
+        id: ruhtId(strang.id),
+        art: 'ruht',
+        strang: strang.id,
+        zone,
+        zeichen: 'blockiert',
+        titel: `ruht · ${offene.length} offen`,
+        meta: offene.map(one => one.titel).join(' · '),
+        chat: '',
+        leise: true,
+        gewaehlt: false,
+      })
+    }
+
+    for (const eines of ruht ? [] : offene) {
+      const dabei = laufende(eines, chats)
+      const chat = dabei.some(one => one.frage !== '') ? 'wartet' : dabei.length > 0 ? 'laeuft' : ''
 
       karten[eines.zone].push({
         id: eines.id,
@@ -196,6 +224,7 @@ export const sicht = (
     return {
       strang,
       ohneZiel: strang.ziel === '',
+      wer: strang.wer ?? '',
       kopf: kopfVon(plan, strang),
       wohin: wohinVon(plan, strang),
       karten,
@@ -269,7 +298,8 @@ export const sicht = (
     karte.gewaehlt = karte.id === gewaehlt
   }
 
-  const jetzt = plan.buendel.filter(one => one.zone === 'jetzt').length
+  // Was ein Dauerläufer, der ruht, offen hat, zählt nicht mit: An ihm arbeitet gerade niemand.
+  const jetzt = plan.buendel.filter(one => one.zone === 'jetzt' && !ruhend.has(one.strang)).length
   const warten = chats.chats.filter(one => one.frage !== '').length
 
   return {
@@ -307,6 +337,9 @@ export type Detail = {
   chats: DetailChat[]
   // welche Knöpfe die Karte hat
   knoepfe: readonly ('auftrag' | 'erklaeren' | 'endziel')[]
+  // die Bündel, zu denen die Karte je einen Auftrag anbietet: die jetzt möglichen eines
+  // Dauerläufers, der ruht. Sie haben keine eigene Karte. Fehlt sonst.
+  auftraege?: { id: string; titel: string }[]
 }
 
 const quellenZeile = (quelle: string): string =>
@@ -332,6 +365,7 @@ const mitDiesem = (chats: readonly ZielGraphChat[], ich: string): DetailChat[] =
 export const detail = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string): Detail | null => {
   const eines = plan.buendel.find(one => one.id === wahl)
   const strang = plan.straenge.find(one => one.id === eines?.strang || fertigId(one.id) === wahl)
+  const ruhender = plan.straenge.find(one => ruhtId(one.id) === wahl)
   const schritt = plan.stamm.find(one => one.id === wahl)
   const chat = chats.chats.find(one => chatId(one.id) === wahl)
 
@@ -376,6 +410,30 @@ export const detail = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string)
       ],
       chats: [],
       knoepfe: [],
+    }
+  }
+
+  if (ruhender !== undefined) {
+    const offene = plan.buendel.filter(one => one.strang === ruhender.id && one.zone !== 'hinter')
+
+    return {
+      id: wahl,
+      kopf: `Dauerläufer · Strang ${ruhender.name}`,
+      titel: `ruht · ${offene.length} offen`,
+      zeilen: [
+        {
+          art: 'leise',
+          text: `Ein Dauerläufer ruht, solange kein Chat an ihm arbeitet und in den letzten ${AKTIV_TAGE} Tagen keines seiner Tickets geschlossen wurde.`,
+        },
+        { art: 'leise', text: zielZeile(ruhender) },
+        ...offene.map(one => ({
+          art: 'punkt' as const,
+          text: `${one.titel} (${[ZONEN_NAME[one.zone], one.meta].filter(teil => teil !== '').join(' · ')})`,
+        })),
+      ],
+      chats: [],
+      knoepfe: [],
+      auftraege: offene.filter(one => one.zone === 'jetzt').map(one => ({ id: one.id, titel: one.titel })),
     }
   }
 

@@ -146,10 +146,11 @@ export const pruefePlatz = (bild: Bild): number => {
   return rechts
 }
 
+// 'ruht': die eine Zeile eines Dauerläufers, der ruht. Sie steht dort, wo seine Bündel standen.
 const KNOTEN_IN_ZONE: Record<string, string[]> = {
   hinter: ['erledigt'],
-  jetzt: ['laeuft', 'bereit', 'teilweise'],
-  spaeter: ['blockiert'],
+  jetzt: ['laeuft', 'bereit', 'teilweise', 'ruht'],
+  spaeter: ['blockiert', 'ruht'],
 }
 
 // Die Regeln, auf die sich zeichnen.ts verlässt, für die Daten, die zeilen.ts aus einem Plan

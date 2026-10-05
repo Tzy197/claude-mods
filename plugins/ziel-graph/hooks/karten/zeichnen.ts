@@ -1,6 +1,7 @@
 import type { ZielGraphFarben, ZielGraphZone } from '../../types'
 
 import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
+import { mitPerson } from '../worte'
 
 import { chatMarke, zeichenText } from './karten'
 import type { Karte, KartenZeichen, Sicht } from './karten'
@@ -301,9 +302,11 @@ export const karteBild = (karte: Karte, strang: Paar, wahl: KartenWahl): Bild =>
   )
 }
 
-// Der Kopf einer Spalte: der Name des Strangs und darunter sein Ziel, oder „kein Ziel festgelegt“.
+// Der Kopf einer Spalte: der Name des Strangs, dahinter leiser, wer ihn macht, und darunter
+// sein Ziel, oder „kein Ziel festgelegt“. `wer`: '' wenn GOAL.md niemanden nennt.
 export const kopfBild = (
   name: string,
+  wer: string,
   zeilen: readonly string[],
   ohneZiel: boolean,
   strang: Paar,
@@ -316,15 +319,20 @@ export const kopfBild = (
   const innen = breite - LUFT
   const platz = innen - 30
   const [eins = '', zwei = ''] = ohneZiel ? zeilen : umbruch(zeilen[0] ?? '', platz, 11, false)
+  const titel = kuerze(name, platz, 14.5, true)
+  // Die Person steht in derselben Zeile wie der Name, so weit der Platz reicht.
+  const rest = passen(platz, 14.5, true) - titel.length - 3
+  const person = wer === '' || rest < 3 ? '' : wer.length > rest ? `${wer.slice(0, rest - 1).trimEnd()}…` : wer
   const teile = [
     `<rect x="0.5" y="0.5" width="${innen - 1}" height="${KOPF_HOEHE - 1}" rx="10"${farbe({ f: 'karte', s: 'rand' })}/>`,
     `<rect x="0.5" y="0.5" width="6" height="${KOPF_HOEHE - 1}" rx="3"${farbe({ f: 'strang' })}/>`,
-    schrift(18, 24, kuerze(name, platz, 14.5, true), 14.5, 600, farbe({ f: 'text' })),
+    `<text x="18" y="24" font-size="14.5" font-weight="600"${farbe({ f: 'text' })}>${esc(titel)}` +
+      `${person === '' ? '' : `<tspan font-weight="400"${farbe({ f: 'meta' })}> · ${esc(person)}</tspan>`}</text>`,
     schrift(18, 42, kuerze(eins, platz, 11, ohneZiel), 11, ohneZiel ? 600 : 400, farbe({ f: ohneZiel ? 'warm' : 'meta' })),
     zwei === '' ? '' : schrift(18, 57, kuerze(zwei, platz, 11, false), 11, 400, farbe({ f: 'meta' })),
   ]
 
-  return huelle(gesamt, KOPF_HOEHE, teile.join(''), stil(), `Strang ${name}: ${zeilen.join(', ')}`)
+  return huelle(gesamt, KOPF_HOEHE, teile.join(''), stil(), `Strang ${mitPerson(name, wer)}: ${zeilen.join(', ')}`)
 }
 
 // Der Rand links: der Name des Abschnitts und ein Strich, der zeigt, wie weit er reicht.
@@ -426,6 +434,7 @@ export type Flaeche = {
   // die Breite einer Spalte in Zeichenzellen: Karte und Knopf
   spalte: number
   kopfRand: Bild
+  // `name`: der Name des Strangs und dahinter, wer ihn macht
   koepfe: { id: string; name: string; bild: Bild; ohneZiel: boolean }[]
   baender: FlaechenBand[]
   // je Strang das Ende seiner Spalte, und davor der leere Rand
@@ -458,8 +467,8 @@ export const baueFlaeche = (bild: Sicht, wahl: FlaechenWahl): Flaeche => {
 
   const koepfe = bild.spalten.map(spalte => ({
     id: spalte.strang.id,
-    name: spalte.strang.name,
-    bild: kopfBild(spalte.strang.name, spalte.kopf, spalte.ohneZiel, spalte.strang.farbe, breite, gesamt, farben),
+    name: mitPerson(spalte.strang.name, spalte.wer),
+    bild: kopfBild(spalte.strang.name, spalte.wer, spalte.kopf, spalte.ohneZiel, spalte.strang.farbe, breite, gesamt, farben),
     ohneZiel: spalte.ohneZiel,
   }))
 

@@ -23,6 +23,8 @@ test('aus der Plan-Datei, die ein Lauf schreibt, baut die Probe den Graphen und 
   expect(gelesen?.plan).toEqual(plan)
   expect(gelesen?.warnungen).toEqual([])
   expect(gelesen?.chats.chats.map(one => `${one.id}|${one.name}|${one.frage}`)).toEqual(['sitzung-7|Warenkorb-Regeln|'])
+  // Am Dauerläufer „Betrieb“ hängt kein Chat: Er ruht, in der Probe wie in den Ansichten.
+  expect([...(gelesen?.ruhend ?? [])]).toEqual(['betrieb'])
 
   // (a) Der Graph der schmalen Ansicht, im Aussehen „Ruhig“.
   for (const [farben, grund] of [['hell', '#ffffff'], ['dunkel', '#18242a']] as const) {
@@ -49,8 +51,7 @@ test('aus der Plan-Datei, die ein Lauf schreibt, baut die Probe den Graphen und 
       'warenkorb',
       'gutscheine',
       'suchfelder',
-      'ladezeit',
-      'build-skripte',
+      'ruht-betrieb',
       'rueckfragen',
       'rechnungen',
       'grundstock-steht',
@@ -65,7 +66,7 @@ test('aus der Plan-Datei, die ein Lauf schreibt, baut die Probe den Graphen und 
   const leiste = zeichneGraph(json, { chats: [{ id: 'sitzung-7', frage: 'Sollen Gutscheine auch den Versand decken?' }] })
   const streifen = await ui.findAll({ type: 'Svg' })
 
-  expect(streifen).toHaveLength(15)
+  expect(streifen).toHaveLength(14)
   expect(String(streifen[0]?.props.source).slice(String(streifen[0]?.props.source).indexOf('<style>'))).toContain(
     (leiste?.bild.source ?? '-').slice((leiste?.bild.source ?? '-').indexOf('<style>'), -'</svg>'.length),
   )
@@ -75,11 +76,13 @@ test('aus der Plan-Datei, die ein Lauf schreibt, baut die Probe den Graphen und 
   expect(zeichneGraph(json, { offen: ['katalog-texte'] })?.bild.source).toContain('>Jacken: Farbgruppen</text>')
   expect(zeichneGraph(json)?.bild.source).not.toContain('>Jacken: Farbgruppen</text>')
   expect(zeichneGraph(json, { ansicht: 'uebersicht' })?.bild.alt).toContain('Ansicht Übersicht')
-  expect(zeichneGraph(json)?.sicht.zaehler).toBe('6 Bündel jetzt möglich · 1 laufen · 0 warten auf dich')
-  expect(zeichneGraph(json, { chats: [] })?.sicht.zaehler).toBe('6 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
+  expect(zeichneGraph(json)?.sicht.zaehler).toBe('4 Bündel jetzt möglich · 1 laufen · 0 warten auf dich')
+  expect(zeichneGraph(json, { chats: [] })?.sicht.zaehler).toBe('4 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
   expect(zeichneGraph(json, { chats: [{ id: 'sitzung-7', frage: 'Ja?' }] })?.sicht.zaehler).toBe(
-    '6 Bündel jetzt möglich · 1 laufen · 1 warten auf dich',
+    '4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich',
   )
+  // Der Dauerläufer, der ruht, zählt nicht mit; aufgeklappt nennt seine Zeile seine zwei Bündel.
+  expect(zeichneGraph(json, { offen: ['ruht-betrieb'] })?.bild.source).toContain('>Umbau der Build-Skripte</text>')
 
   // (b) Die Karten der breiten Ansicht als ein Bild.
   for (const [farben, karte, grund] of [['hell', '#ffffff', '#f4f6f7'], ['dunkel', '#1d242b', '#14191e']] as const) {
@@ -96,8 +99,13 @@ test('aus der Plan-Datei, die ein Lauf schreibt, baut die Probe den Graphen und 
     expect(bild?.source).toContain('>Chat läuft</text>')
     expect((bild?.breite ?? 0) > 1000 && (bild?.hoehe ?? 0) > 500).toBe(true)
     // So breit, wie `/orchestrator` sich die Leiste wünscht: dieselbe Fläche wie dort.
+    expect(bild?.source).toContain('>ruht · 2 offen</text>')
+    expect(bild?.source).not.toContain('>Umbau der Build-Skripte</text>')
     expect(bild).toEqual(
-      vorschau(baueFlaeche(sicht(plan, gelesen?.chats ?? { ich: '', chats: [], gelesen: 0 }, ''), { zellen: wunschZellen(4), farben }), farben),
+      vorschau(
+        baueFlaeche(sicht(plan, gelesen?.chats ?? { ich: '', chats: [], gelesen: 0 }, '', null, gelesen?.ruhend), { zellen: wunschZellen(4), farben }),
+        farben,
+      ),
     )
   }
 

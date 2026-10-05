@@ -24,7 +24,7 @@ export const NICHTS_GELADEN: ZielGraphGeladen = {
   gelesen: 0,
 }
 
-export const KEINE_CHATS: ZielGraphChats = { ich: '', chats: [], gelesen: 0 }
+export const KEINE_CHATS: ZielGraphChats = { ich: '', chats: [], fertige: [], ausgeblendet: [], gelesen: 0 }
 
 export const RUHE: ZielGraphLauf = { phase: 'nie', seit: 0, sekunden: 0, grund: '' }
 

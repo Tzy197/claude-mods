@@ -68,7 +68,7 @@ for (const surface of SURFACES) {
     expect(mit).toContain('Endziel (vermutet): der Shop im Betrieb')
     expect(mit).toContain('Entwurf Warenkorb-Regeln')
     expect(mit).toContain('in 23 s aus 5 Dateien, 1 Chat und 30 Commits')
-    expect(await ui.findAll({ type: 'Svg' })).toHaveLength(surface === 'terminal' ? 0 : 15)
+    expect(await ui.findAll({ type: 'Svg' })).toHaveLength(surface === 'terminal' ? 0 : 14)
     // Auch der gescheiterte Lauf liegt da, mit der rohen Antwort; der Plan bleibt der letzte gelungene.
     expect(gespeichert(welt, `${ORDNER}/letzter.json`)).toMatchObject({
       ergebnis: 'gescheitert',

@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { ZielGraphGeladen, ZielGraphLauf } from '../types'
+import type { ZielGraphChats, ZielGraphGeladen, ZielGraphLauf } from '../types'
 
 import { fasseZusammen, kurz, liesChats, nameVon, neueFragen, nimmAuf, nimmHeraus } from './chats'
 import type { ChatZugang } from './chats'
@@ -99,11 +99,17 @@ const laufZugang = ($: EngineInterface): LaufZugang => ({
 
 // ---------- Laden ----------
 
-// Liest die Stände der laufenden Chats neu und meldet, wo ein anderer Chat neu auf den
-// Nutzer wartet. `nurNeues`: Hat sich nichts geändert, bleiben die Chats im Zustand
-// unberührt, und die breite Ansicht wird nicht neu gezeichnet. So stört der Takt niemanden,
-// der dort gerade in ein Feld tippt. Die Uhr geht trotzdem weiter: Die schmale Ansicht hat
-// kein Feld, und ihre Zeitangaben („vor 3 Min“) sollen nicht stehen bleiben.
+// Die drei Listen der Chats als ein Text: Daran ist zu sehen, ob sich etwas geändert hat,
+// auch wenn ein Chat nur von einer Liste in die andere gewechselt ist.
+const listen = (stand: ZielGraphChats): string =>
+  JSON.stringify([stand.chats, stand.fertige ?? [], stand.ausgeblendet ?? []])
+
+// Liest die Stände der Chats neu und meldet, wo ein anderer Chat neu auf den Nutzer wartet.
+// Dabei entscheidet sich auch, wer läuft, wer fertig ist und wer ausgeblendet wird: Nur ein
+// laufender Chat löst einen Hinweis aus. `nurNeues`: Hat sich nichts geändert, bleiben die
+// Chats im Zustand unberührt, und die breite Ansicht wird nicht neu gezeichnet. So stört der
+// Takt niemanden, der dort gerade in ein Feld tippt. Die Uhr geht trotzdem weiter: Die
+// schmale Ansicht hat kein Feld, und ihre Zeitangaben („vor 3 Min“) sollen nicht stehen bleiben.
 const ladeChats = async ($: EngineInterface, nurNeues = false): Promise<void> => {
   try {
     const neu = await liesChats(zugang($))
@@ -116,7 +122,7 @@ const ladeChats = async ($: EngineInterface, nurNeues = false): Promise<void> =>
     }
 
     const alt = await read($, chats)
-    const istGleich = alt.ich === neu.ich && JSON.stringify(alt.chats) === JSON.stringify(neu.chats)
+    const istGleich = alt.ich === neu.ich && listen(alt) === listen(neu)
 
     if (!nurNeues || !istGleich) {
       await update($, chats, () => neu)
@@ -146,10 +152,23 @@ const ladeNurPlan = async ($: EngineInterface, wie: TicketWahl = 'frisch'): Prom
   }
 }
 
+// Wer in der schmalen Ansicht die ausgeblendeten Chats eingeblendet hat, sieht sie bis zum
+// nächsten Neuladen: Dann sind sie wieder ausgeblendet.
+const blendeChatsAus = async ($: EngineInterface): Promise<void> => {
+  try {
+    if ((await read($, graph)).alleChats === true) {
+      await update($, graph, alt => ({ ...alt, alleChats: false }))
+    }
+  } catch (fehler) {
+    $.ui.log(`Ausgeblendete Chats nicht zurückgesetzt: ${String(fehler)}`)
+  }
+}
+
 // Dasselbe und dazu die Chats.
 const lade = async ($: EngineInterface, wie: TicketWahl = 'frisch'): Promise<void> => {
   await ladeNurPlan($, wie)
   await ladeChats($)
+  await blendeChatsAus($)
 }
 
 // Fragt das Ticket-System und legt seinen Stand auf den Plan. Ohne Plan gibt es nichts
@@ -430,6 +449,7 @@ const tatenVon = ($: EngineInterface): Taten => ({
   lege: auftrag => void lege($, auftrag),
   aufnehmen: () => void nimmChatAuf($),
   herausnehmen: () => void nimmChatHeraus($),
+  zeigeChats: () => void update($, graph, alt => ({ ...alt, alleChats: true })),
   zeige: ansicht => void update($, graph, alt => ({ ...alt, ansicht })),
   klappe: id => void update($, graph, alt => ({ ...alt, offen: wechsle(alt.offen, id) })),
   // Klappt alle Zeilen auf; sind schon alle offen, klappt es sie zu.

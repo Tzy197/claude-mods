@@ -95,9 +95,10 @@ test('GitHub: Der Lauf liest die Tickets über gh, gibt sie dem Modell, und beid
   expect(text).toContain('  · Kasse · Block Rechnungen — 0 von 1 erledigt · wartet auf: Entwurf Gutschein-Einlösung')
   expect(text).toContain('  · Katalog · 10 Rückfragen an den Einkauf — 0 von 1 erledigt · wartet auf Auskunft: Maße vom Einkauf')
   expect(text).toContain('  ○ Katalog · Katalog-Texte abnehmen — 0 von 1 erledigt')
-  // Ein Bündel ohne Tickets steht da wie bisher.
-  expect(text).toContain('  ◐ Betrieb · Umbau der Build-Skripte — 1 von 3 erledigt · Rest wartet auf den Lasttest')
-  expect(text).toContain('  ○ Betrieb · Ladezeit der Startseite senken')
+  // Ein Bündel ohne Tickets steht da wie bisher. Der Dauerläufer „Betrieb“ hat keine Tickets,
+  // und kein Chat arbeitet an ihm: Er ruht in einer Zeile.
+  expect(text).toContain('  ○ Kasse · Entwurf Warenkorb-Regeln')
+  expect(text).toContain('  · Betrieb · ruht · 2 offen — Ladezeit der Startseite senken · Umbau der Build-Skripte')
 
   // Die Detail-Fläche nennt die Tickets: Nummer, Titel und ob sie geschlossen sind.
   await ui.press({ key: 'karte-gutscheine' })
@@ -177,7 +178,8 @@ test('GitHub: „Neu laden“ holt erledigt, bereit und blockiert frisch aus den
   // Ein Ticket hat jetzt ein Blockade-Label: Das Bündel wartet.
   expect(text).toContain('  · Katalog · Katalog-Texte abnehmen — 0 von 1 erledigt · #17 blockiert')
   expect(text).toContain('1 neues Ticket seit dem letzten Ableiten')
-  expect(text).toContain('5 Bündel jetzt möglich')
+  // Warenkorb, Rechnungen und Suchfelder; was der Dauerläufer offen hat, der ruht, zählt nicht mit.
+  expect(text).toContain('3 Bündel jetzt möglich')
   // Was der Lauf geändert hatte, bleibt stehen: Der frische Stand ist keine Änderung eines Laufs.
   expect(text).not.toContain('Seit dem letzten Ableiten')
 

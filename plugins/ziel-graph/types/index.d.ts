@@ -16,7 +16,8 @@ export type ZielGraphFarben = 'auto' | 'hell' | 'dunkel'
 export type ZielGraphStrang = {
   id: string
   name: string
-  // 'ziel' hat ein Ende, 'dauer' ist ein Dauerläufer und läuft weiter
+  // 'ziel' hat ein Ende, 'dauer' ist ein Dauerläufer und läuft weiter. Nennt GOAL.md die Art
+  // („Art: Dauerläufer“), gilt sie; sonst gilt, was das Modell sagt.
   art: 'ziel' | 'dauer'
   // wohin der Strang führt, wörtlich aus GOAL.md; '' wenn dort keines festgelegt ist
   ziel: string
@@ -26,6 +27,8 @@ export type ZielGraphStrang = {
   inGoal: boolean
   // id des Zwischenziels, zu dem der Strang laut GOAL.md gehört; '' ohne
   gehoertZu: string
+  // wer den Strang macht, laut „Wer:“ in GOAL.md; fehlt, wenn dort niemand steht
+  wer?: string
   farbe: { hell: string; dunkel: string }
 }
 
@@ -39,6 +42,9 @@ export type ZielGraphTicket = {
   // warum an einem offenen Ticket gerade nicht gearbeitet werden kann: Ein Label nennt es
   // blockiert, oder es wartet auf eine Auskunft von außen. '' wenn nichts dagegen spricht.
   grund: '' | 'blockiert' | 'auskunft'
+  // der Tag, an dem es geschlossen wurde ('2026-09-20'); fehlt, wenn es offen ist oder das
+  // Ticket-System den Tag nicht nennt
+  geschlossen?: string
 }
 
 // Ein Bündel: das, was ein Chat in einem Zug erledigen würde. Eine Zeile des Graphen und
@@ -231,17 +237,28 @@ export type ZielGraphChat = {
   frage: string
   // wann der Stand zuletzt geschrieben wurde, in Millisekunden; 0: noch nie
   zeit: number
+  // true: Die Aufgabe, für die der Chat begonnen wurde, ist erledigt, und er wartet auf
+  // nichts. Fehlt in einer Datei von vor Version 0.6.0: Dann gilt der Chat als nicht fertig.
+  fertig?: boolean
   // Ticketnummer ohne '#', wenn Branch oder erster Auftrag eine nennen
   ticket?: string
   // Titel des Tickets aus dem Ticket-System; '' wenn dort keiner zu finden war
   ticketTitel?: string
 }
 
-// Die Chats eines Repos, wie beide Ansichten sie zeigen: wer wartet, steht oben.
+// Die Chats eines Repos, wie beide Ansichten sie zeigen.
 export type ZielGraphChats = {
   // die id der eigenen Session
   ich: string
+  // die Chats, die laufen: Wer wartet, steht oben. Nur sie markieren eine Zeile oder Karte,
+  // zählen als wartend und gehen ans Modell.
   chats: ZielGraphChat[]
+  // fertig, und die letzte Antwort ist keine 24 Stunden alt: Sie stehen noch in der Liste,
+  // laufen aber nicht mehr. Fehlt in einem Zustand von vor Version 0.6.0.
+  fertige?: ZielGraphChat[]
+  // ausgeblendet: länger als 24 Stunden fertig oder seit 7 Tagen ohne neue Antwort. Ihre
+  // Dateien bleiben liegen.
+  ausgeblendet?: ZielGraphChat[]
   // wann die Dateien gelesen wurden, in Millisekunden; 0: noch nie
   gelesen: number
 }
@@ -253,6 +270,8 @@ export type ZielGraphGraphSicht = {
   ansicht: ZielGraphAnsicht
   // ids der aufgeklappten Zeilen
   offen: string[]
+  // true: Auch die ausgeblendeten Chats stehen in der Liste, bis neu geladen wird
+  alleChats?: boolean
 }
 
 // Was der Nutzer in der breiten Ansicht `/orchestrator` eingestellt hat.

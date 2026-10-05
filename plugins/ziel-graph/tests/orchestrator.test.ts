@@ -2,8 +2,9 @@ import { expect, test } from 'claude-code/testing'
 
 import { AUFTRAG } from '../hooks/plan/ableiten'
 import { promptEndziel, promptGoalAnlegen, promptStrangZiel } from '../hooks/plan/goal'
+import { ruhende } from '../hooks/plan/dauer'
 import { strangFrage } from '../hooks/plan/lesen'
-import { auftragFuer, erklaerungFuer, fertigId, sicht } from '../hooks/karten/karten'
+import { auftragFuer, erklaerungFuer, fertigId, ruhtId, sicht } from '../hooks/karten/karten'
 import { SVG_GRENZE, baueFlaeche } from '../hooks/karten/zeichnen'
 
 import { CHAT, GOAL, LAUFEND, QUELLEN, STAMM_OHNE_GOAL, ZEILEN, antwort, gelungen } from './shop'
@@ -157,7 +158,9 @@ for (const surface of SURFACES) {
     expect(text).not.toContain('Ableiten läuft')
     expect(text).not.toContain('GOAL.md fehlt')
     expect(text).toContain('Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an.')
-    expect(text).toContain('6 Bündel jetzt möglich · 1 Chat · 1 wartet auf dich')
+    // Am Dauerläufer „Betrieb“ arbeitet kein Chat: Er ruht, und seine zwei Bündel zählen nicht mit.
+    expect(text).toContain('4 Bündel jetzt möglich · 1 Chat · 1 wartet auf dich')
+    expect(text).toContain('ruht · 2 offen')
     expect(text).toContain('Abgeleitet gerade eben in 23 s aus 5 Dateien, 1 Chat und 30 Commits · claude-sonnet-5-5')
     expect(text).toContain('Katalog-Texte abnehmen')
     expect(text).toContain('2 erledigt')
@@ -238,8 +241,8 @@ for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
       'warenkorb',
       'gutscheine',
       'suchfelder',
-      'ladezeit',
-      'build-skripte',
+      // Der Dauerläufer „Betrieb“ ruht: eine Karte statt seiner zwei offenen Bündel.
+      ruhtId('betrieb'),
       'rueckfragen',
       'rechnungen',
       'grundstock-steht',
@@ -247,16 +250,18 @@ for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
       'lasttest-bestanden',
       'endziel',
     ].map(one => `karte-${one}`)
+    const laufend = { ...LAUFEND, chats: LAUFEND.chats.slice(0, 1) }
 
     for (const zellen of [200, 150, 58]) {
       const ui = await $.ui.mount({ ...kartenPane(zellen), surface })
       const svg = await ui.findAll({ type: 'Svg' })
-      const flaeche = baueFlaeche(sicht(plan, { ...LAUFEND, chats: LAUFEND.chats.slice(0, 1) }, ''), { zellen, farben: 'auto' })
+      const flaeche = baueFlaeche(sicht(plan, laufend, '', null, ruhende(plan, laufend, JETZT)), { zellen, farben: 'auto' })
       const gestapelt = flaeche.art === 'gestapelt'
 
       expect(flaeche.art).toBe(zellen === 200 ? 'neben' : zellen === 150 ? 'unter' : 'gestapelt')
-      // Gestapelt gibt es keine Ränder und keine Spalten-Enden.
-      expect(svg).toHaveLength(gestapelt ? 4 + 10 + 4 : 3 + 4 + 3 + 16 + 4 + 4)
+      // Gestapelt gibt es keine Ränder und keine Spalten-Enden. Sonst füllt ein leeres Stück
+      // die Spalte des Dauerläufers unter seiner einen Karte auf: gleich viele Bilder wie mit zweien.
+      expect(svg).toHaveLength(gestapelt ? 4 + 9 + 4 : 3 + 4 + 3 + 16 + 4 + 4)
       // Zusammen ist das Markup einer Zeichnung genau das der Fläche: kein Bild steht doppelt da.
       expect(svg.reduce((summe, one) => summe + String(one.props.source).length, 0)).toBe(flaeche.zeichen)
 
@@ -283,6 +288,7 @@ for (const surface of ['desktop', 'vscode', 'mobile'] as const) {
 
       expect(text).toContain('◉ Entwurf Warenkorb-Regeln [Chat wartet auf dich]')
       expect(text).toContain('✓ 2 erledigt (Grundstock: 13 Produktseiten fertig · Bilder für Schuhe und Jacken)')
+      expect(text).toContain('· ruht · 2 offen (Ladezeit der Startseite senken · Umbau der Build-Skripte)')
       expect(text).toContain('Strang Kasse: kein Ziel festgelegt, vermutet: Bestellen ohne Umweg')
       expect(text).toContain('◎ Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an. (aus GOAL.md)')
 
@@ -346,12 +352,14 @@ test('terminal: die Karten als Liste, je Karte eine Zeile, die sich drücken lä
   expect(text).toContain('SPÄTER')
   expect(text).toContain('  ✓ Katalog · 2 erledigt — Grundstock: 13 Produktseiten fertig · Bilder für Schuhe und Jacken')
   expect(text).toContain('▸ ◉ Kasse · Entwurf Warenkorb-Regeln [Chat wartet auf dich]')
-  expect(text).toContain('  ◐ Betrieb · Umbau der Build-Skripte — 1 von 3 erledigt · Rest wartet auf den Lasttest')
+  // Der Dauerläufer, der ruht, ist eine Zeile statt seiner zwei offenen Bündel.
+  expect(text).toContain('  · Betrieb · ruht · 2 offen — Ladezeit der Startseite senken · Umbau der Build-Skripte')
+  expect(text).not.toContain('Betrieb · Umbau der Build-Skripte')
   expect(text).toContain('  · Kasse · Block Rechnungen — vermutet · wartet auf: Entwurf Warenkorb-Regeln')
   expect(text).toContain('ZIELE')
   expect(text).toContain('  ✓ Grundstock steht — erreicht')
   expect(text).toContain('  ◎ Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an. — aus GOAL.md')
-  expect(await schluesselVon(ui, 'karte-')).toHaveLength(14)
+  expect(await schluesselVon(ui, 'karte-')).toHaveLength(13)
 
   // Eine Zeile drücken wählt die Karte: Darunter steht, was dazugehört.
   await ui.press({ key: 'karte-katalog-texte' })

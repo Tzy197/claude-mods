@@ -1,6 +1,7 @@
 import type { ElementConstructor, RenderElement, SvgProps } from 'claude-code'
 
 import type {
+  ZielGraphChat,
   ZielGraphChats,
   ZielGraphGeladen,
   ZielGraphGraphSicht,
@@ -8,13 +9,17 @@ import type {
   ZielGraphPlan,
 } from '../../types'
 
-import { alter, nameVon, zaehler } from '../chats'
+import { alter, angemeldete, ausgeblendetZeile, istFertig, nameVon, zaehler } from '../chats'
 import { MODELL } from '../fest'
+import { ruhende } from '../plan/dauer'
 import { neueTicketsZeile } from '../plan/frisch'
 import {
   aenderungsZeile,
+  dauerAuftrag,
   endzielAuftrag,
   faktenZeile,
+  fertigZeile,
+  fertigeZiele,
   festZeile,
   goalAuftrag,
   laufZeile,
@@ -25,16 +30,16 @@ import type { Taten, Teile } from '../teile'
 import { mehrzahl } from '../worte'
 
 import type { GraphWahl } from './daten'
-import { fasseErledigtes } from './ruhig'
+import { fasseErledigtes, fasseRuhendes } from './ruhig'
 import { schneide } from './streifen'
 import type { Streifen } from './streifen'
-import { ALLE, SVG_GRENZE, ZEICHEN, chatMarke, klappZeichen, sicht, zeichneSvg } from './zeichnen'
+import { ALLE, SVG_GRENZE, ZEICHEN, bahnName, chatMarke, istLeise, klappZeichen, sicht, zeichneSvg } from './zeichnen'
 import type { Sicht } from './zeichnen'
 import { graphDaten } from './zeilen'
 
-// Die schmale Ansicht `/graph`: oben die laufenden Chats des Repos, darunter der Plan als
-// Graph. Hier wird nur gezeichnet, ohne `$`: Den Zustand und die Handgriffe der Knöpfe
-// reicht register.tsx.
+// Die schmale Ansicht `/graph`: oben die laufenden Chats des Repos, darunter blass die
+// fertigen und in einer Zeile, wie viele ausgeblendet sind; dann der Plan als Graph. Hier
+// wird nur gezeichnet, ohne `$`: Den Zustand und die Handgriffe der Knöpfe reicht register.tsx.
 
 // Das Bild ist 500 px breit. Eine Zelle der Code-Schrift ist in der App etwa 7,8 px
 // breit: So viele Zellen sind das Bild und ein wenig Rand. `columns` ist ein Wunsch; eine
@@ -58,10 +63,44 @@ export type GraphLage = {
   wahl: ZielGraphGraphSicht
 }
 
-// Der obere Teil der Leiste, immer da: die echten Chats des Repos.
-const zeichneChats = (teile: Teile, laufend: ZielGraphChats, taten: Taten): RenderElement => {
+// Ein Chat, der nicht mehr läuft, blass und mit dem Wort, das sagt, warum: „fertig“ oder,
+// ausgeblendet ohne fertig zu sein, „still“.
+const zeichneLeisenChat = (teile: Teile, chat: ZielGraphChat, laufend: ZielGraphChats): RenderElement => {
+  const { Box, Text } = teile
+  const marke = istFertig(chat) ? 'fertig' : 'still'
+
+  return (
+    <Box flexDirection="column">
+      <Text dimColor wrap="wrap">
+        {`${marke === 'fertig' ? '✓' : '·'} ${nameVon(chat)}`}
+        {chat.id === laufend.ich ? ' (dieser Chat)' : ''}
+        {` · ${marke}`}
+      </Text>
+      <Text dimColor wrap="wrap">
+        {alter(laufend.gelesen, chat.zeit)}
+        {chat.branch === '' ? '' : ` · ${chat.branch}`}
+      </Text>
+      <Text dimColor wrap="wrap">
+        {chat.stand}
+      </Text>
+      {chat.frage !== '' && (
+        <Text dimColor wrap="wrap">
+          {`Wartet auf dich: ${chat.frage}`}
+        </Text>
+      )}
+    </Box>
+  )
+}
+
+// Der obere Teil der Leiste, immer da: die echten Chats des Repos. Oben die laufenden,
+// darunter blass die fertigen der letzten 24 Stunden. Was länger fertig oder seit 7 Tagen
+// still ist, steht nur als Zahl da, mit einem Knopf, der es bis zum nächsten Neuladen zeigt.
+const zeichneChats = (teile: Teile, laufend: ZielGraphChats, sindAlleDa: boolean, taten: Taten): RenderElement => {
   const { Box, Text, Button } = teile
-  const istDabei = laufend.chats.some(one => one.id === laufend.ich)
+  const fertige = laufend.fertige ?? []
+  const ausgeblendet = laufend.ausgeblendet ?? []
+  // Auch ein fertiger oder ausgeblendeter Chat ist angemeldet: Er lässt sich herausnehmen.
+  const istDabei = angemeldete(laufend).some(one => one.id === laufend.ich)
 
   return (
     <Box flexDirection="column" gap={1}>
@@ -69,7 +108,7 @@ const zeichneChats = (teile: Teile, laufend: ZielGraphChats, taten: Taten): Rend
         {zaehler(laufend.chats)}
       </Text>
 
-      {laufend.chats.length === 0 && (
+      {laufend.chats.length === 0 && fertige.length === 0 && (
         <Text dimColor wrap="wrap">
           {'Ein Chat mit eigenem Branch oder Ticket meldet sich nach seiner nächsten Antwort ' +
             'selbst an. Jeden anderen nimmt der Knopf „Diesen Chat aufnehmen“ auf.'}
@@ -95,6 +134,19 @@ const zeichneChats = (teile: Teile, laufend: ZielGraphChats, taten: Taten): Rend
           )}
         </Box>
       ))}
+
+      {fertige.map(chat => zeichneLeisenChat(teile, chat, laufend))}
+
+      {ausgeblendet.length > 0 && (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+          <Text dimColor wrap="wrap">
+            {ausgeblendetZeile(ausgeblendet.length, sindAlleDa)}
+          </Text>
+          {!sindAlleDa && <Button key="ausgeblendete" label="Zeigen" onPress={taten.zeigeChats} />}
+        </Box>
+      )}
+
+      {sindAlleDa && ausgeblendet.map(chat => zeichneLeisenChat(teile, chat, laufend))}
 
       <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
         <Button key="laden" label="Neu laden" onPress={taten.laden} />
@@ -141,8 +193,10 @@ const zeichneHinweise = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): R
 
   const offene = ohneZiel(plan)
   const istEndzielOffen = plan.endziel.herkunft !== 'goal'
+  // Ziele, in denen alles erledigt ist: Sie können zum Dauerläufer werden.
+  const fertige = fertigeZiele(plan)
 
-  if (!goal.geaendert && !istEndzielOffen && offene.length === 0) {
+  if (!goal.geaendert && !istEndzielOffen && offene.length === 0 && fertige.length === 0) {
     return null
   }
 
@@ -177,6 +231,16 @@ const zeichneHinweise = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): R
           ))}
         </Box>
       )}
+      {fertige.map(strang => (
+        <Box flexDirection="row" flexWrap="wrap" columnGap={1} alignItems="center">
+          <Text wrap="wrap">{fertigZeile(strang)}</Text>
+          <Button
+            key={`dauer-${strang.id}`}
+            label="Zum Dauerläufer machen"
+            onPress={() => taten.lege(dauerAuftrag(plan, strang.id))}
+          />
+        </Box>
+      ))}
     </Box>
   )
 }
@@ -185,9 +249,16 @@ const zeichneHinweise = (teile: Teile, stand: ZielGraphGeladen, taten: Taten): R
 // sind hier selbst der Aufklapp-Knopf.
 const zeichneListe = (teile: Teile, bild: Sicht, taten: Taten): RenderElement => {
   const { Box, Text, Button } = teile
+  // Die Liste hat keine Legende: Wer eine Bahn laut GOAL.md macht, steht in einer Zeile davor.
+  const personen = bild.bahnen.filter(one => (one.wer ?? '') !== '').map(bahnName)
 
   return (
     <Box flexDirection="column">
+      {personen.length > 0 && (
+        <Text dimColor wrap="wrap">
+          {`Wer es macht: ${personen.join(', ')}`}
+        </Text>
+      )}
       {bild.eintraege.map(eintrag => {
         if (eintrag.typ === 'zone') {
           return (
@@ -208,7 +279,7 @@ const zeichneListe = (teile: Teile, bild: Sicht, taten: Taten): RenderElement =>
         const { zeile } = eintrag
         const bahn = eintrag.bahn === null ? '' : `${eintrag.bahn.name} · `
         const kopf = `${ZEICHEN[zeile.art]} ${zeile.titel}${chatMarke(zeile)}`
-        const istLeise = zeile.art === 'erledigt' || zeile.art === 'blockiert'
+        const leise = istLeise(zeile)
 
         return (
           <Box flexDirection="column">
@@ -220,7 +291,7 @@ const zeichneListe = (teile: Teile, bild: Sicht, taten: Taten): RenderElement =>
                 onPress={() => taten.klappe(zeile.id)}
               />
             ) : (
-              <Text bold={!istLeise} dimColor={istLeise} wrap="truncate-end">
+              <Text bold={!leise} dimColor={leise} wrap="truncate-end">
                 {kopf}
               </Text>
             )}
@@ -297,9 +368,12 @@ const zeichneGraph = (teile: Teile, lage: GraphLage, plan: ZielGraphPlan, taten:
     offen: wahl.offen,
     farben: 'auto',
   }
-  // „Ruhig“: Bild und Liste zeigen, was hinter uns liegt, je Bahn in einer Zeile. Der Plan
-  // behält jedes Bündel für sich; so zeigt ihn auch die breite Ansicht.
-  const daten = fasseErledigtes(graphDaten(plan, laufend, stand.aenderungen))
+  // „Ruhig“: Bild und Liste zeigen, was hinter uns liegt, je Bahn in einer Zeile, und einen
+  // Dauerläufer, der ruht, auch. Der Plan behält jedes Bündel für sich.
+  const daten = fasseRuhendes(
+    fasseErledigtes(graphDaten(plan, laufend, stand.aenderungen)),
+    ruhende(plan, laufend, laufend.gelesen || stand.gelesen),
+  )
   // Was der letzte Lauf geändert hat, in einer Zeile; die Liste dazu hat die breite Ansicht.
   const seither = aenderungsZeile(stand.aenderungen)
   // Offene Tickets, die es beim letzten Ableiten noch nicht gab: Sie stehen in keinem Bündel.
@@ -432,7 +506,7 @@ export const zeichneGraphLeiste = (teile: Teile, lage: GraphLage, taten: Taten):
 
   return (
     <Box flexDirection="column" gap={1}>
-      {zeichneChats(teile, lage.laufend, taten)}
+      {zeichneChats(teile, lage.laufend, lage.wahl.alleChats === true, taten)}
       {zeichnePlan(teile, lage, taten)}
     </Box>
   )

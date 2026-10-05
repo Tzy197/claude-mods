@@ -11,12 +11,14 @@ import {
   GRAPH,
   JETZT,
   ORDNER,
+  TAG,
   WURZEL,
   alleKnoten,
   baue,
   befehl,
   gespeichert,
   inhalt,
+  legeChat,
   legeShop,
   leiteAb,
   mitBildern,
@@ -91,8 +93,9 @@ for (const von of ['graph', 'orchestrator'] as const) {
       expect(text).toContain('Endziel: Der Shop ist im Betrieb und nimmt Bestellungen an.')
       expect(text).toContain('Abgeleitet gerade eben in 23 s aus 5 Dateien, 1 Chat und 30 Commits · claude-sonnet-5-5')
 
-      // Jedes offene Bündel und jedes Zwischenziel des Plans, mit seinem Titel.
-      for (const eines of plan.buendel.filter(one => one.zone !== 'hinter')) {
+      // Jedes offene Bündel und jedes Zwischenziel des Plans, mit seinem Titel. Nur die zwei
+      // Bündel des Dauerläufers „Betrieb“ nicht: Er ruht und steht als Ganzes da.
+      for (const eines of plan.buendel.filter(one => one.zone !== 'hinter' && one.strang !== 'betrieb')) {
         expect(text).toContain(eines.titel)
       }
 
@@ -109,8 +112,11 @@ for (const von of ['graph', 'orchestrator'] as const) {
       'Entwurf Warenkorb-Regeln [Chat · wartet auf dich]',
     )
     expect(aufKarten).toContain('◉ Entwurf Warenkorb-Regeln [Chat wartet auf dich]')
-    expect(imGraphen).toContain('6 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
-    expect(aufKarten).toContain('6 Bündel jetzt möglich · 1 Chat · 1 wartet auf dich')
+    // Der Dauerläufer, der ruht, ist in beiden eine Zeile, und was er offen hat, zählt in keiner mit.
+    expect(imGraphen).toContain('>Betrieb: ruht · 2 offen</text>')
+    expect(aufKarten).toContain('· ruht · 2 offen (Ladezeit der Startseite senken · Umbau der Build-Skripte)')
+    expect(imGraphen).toContain('4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
+    expect(aufKarten).toContain('4 Bündel jetzt möglich · 1 Chat · 1 wartet auf dich')
 
     // Dieselben Stränge ohne Ziel, und derselbe Auftrag dazu aus beiden Ansichten.
     expect(imGraphen).toContain('Ohne Ziel in GOAL.md: Kasse, Betrieb')
@@ -225,6 +231,62 @@ test('der Unterordner des Plans stört die Liste der Chats nicht', async ($, on)
   expect(await mitBildern(graph)).toContain('○ Neuer Chat (dieser Chat)')
 
   await graph.unmount()
+})
+
+test('ein fertiger oder ausgeblendeter Chat markiert in keiner Ansicht mehr ein Bündel, zählt nicht als wartend und geht nicht ans Modell', async ($, on) => {
+  const welt = await mitPlan($, on)
+  const graph = await $.ui.mount({ ...GRAPH, surface: 'terminal' })
+  const karten = await $.ui.mount({ ...BREIT, surface: 'terminal' })
+
+  // Der Chat am Warenkorb läuft und wartet: Beide Ansichten markieren sein Bündel.
+  expect(await mitBildern(graph)).toContain('◉ Entwurf Warenkorb-Regeln [Chat · wartet auf dich] ▸')
+  expect(await mitBildern(graph)).toContain('4 Bündel jetzt möglich · 1 laufen · 1 warten auf dich')
+  expect(await inhalt(karten)).toContain('◉ Kasse · Entwurf Warenkorb-Regeln [Chat wartet auf dich]')
+  expect(await inhalt(karten)).toContain('4 Bündel jetzt möglich · 1 Chat · 1 wartet auf dich')
+
+  // Er wird fertig. Sein Bündel ist wieder frei, in beiden Ansichten, und niemand wartet mehr.
+  legeChat(welt, 'sitzung-7', { name: 'Warenkorb-Regeln', stand: 'Die Regeln sind zusammengeführt.', fertig: true })
+  await graph.press({ key: 'laden' })
+
+  const fertigImGraphen = await mitBildern(graph)
+  const fertigAufKarten = await inhalt(karten)
+
+  expect(fertigImGraphen).toContain('0 Chats, keiner wartet auf dich')
+  expect(fertigImGraphen).toContain('✓ Warenkorb-Regeln · fertig')
+  expect(fertigImGraphen).toContain('○ Entwurf Warenkorb-Regeln ▸')
+  expect(fertigImGraphen).not.toContain('[Chat')
+  expect(fertigImGraphen).toContain('4 Bündel jetzt möglich · 0 laufen · 0 warten auf dich')
+  expect(fertigAufKarten).toContain('  ○ Kasse · Entwurf Warenkorb-Regeln')
+  expect(fertigAufKarten).not.toContain('[Chat')
+  expect(fertigAufKarten).toContain('4 Bündel jetzt möglich · 0 Chats · keiner wartet auf dich')
+  // Ohne Karte steht er auch nicht da: Er läuft nicht mehr.
+  expect(fertigAufKarten).not.toContain('Chats ohne Karte')
+  expect(await schluesselVon(karten, 'karte-chat--')).toEqual([])
+  // Aufgeklappt nennt die Zeile des Bündels keinen Chat mehr.
+  await graph.press({ key: 'auf-warenkorb' })
+  expect(await mitBildern(graph)).not.toContain('Chat: Warenkorb-Regeln')
+
+  // Das Ableiten bekommt ihn nicht als laufenden Chat: Es laufen keine.
+  await leiteAb(graph, welt)
+  expect(welt.fragen).toHaveLength(2)
+  expect(welt.fragen[1]?.prompt).toContain('<chats>\nEs laufen keine Chats.\n</chats>')
+  expect(welt.fragen[1]?.prompt).not.toContain('Warenkorb-Regeln · Branch')
+  expect(gespeichert(welt, `${ORDNER}/plan.json`).fakten).toMatchObject({ chats: 0 })
+
+  // Derselbe Chat, nicht fertig, aber seit 8 Tagen still und mit einer Frage: ausgeblendet.
+  // Er markiert nichts, zählt nicht als wartend und meldet sich nicht.
+  legeChat(welt, 'sitzung-7', { name: 'Warenkorb-Regeln', frage: 'Noch da?', zeit: JETZT - 8 * TAG })
+  welt.toasts.length = 0
+  await graph.press({ key: 'laden' })
+  expect(await mitBildern(graph)).toContain('0 Chats, keiner wartet auf dich')
+  expect(await mitBildern(graph)).toContain('2 fertige oder stille Chats ausgeblendet')
+  expect(await mitBildern(graph)).not.toContain('[Chat')
+  expect(await inhalt(karten)).not.toContain('[Chat')
+  expect(await inhalt(karten)).toContain('· 0 Chats · keiner wartet auf dich')
+  expect(welt.toasts).toEqual([])
+
+  await graph.unmount()
+  await karten.unmount()
 })
 
 test('eine Session, die nur /graph öffnet, zeichnet die breite Ansicht nie', async ($, on) => {

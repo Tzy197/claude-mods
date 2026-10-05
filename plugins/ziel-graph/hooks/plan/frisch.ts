@@ -83,11 +83,15 @@ const ticketsVon = (
       return stand.istVollstaendig ? { ...one, zu: true, grund: '' } : one
     }
 
+    // Der Tag, an dem es geschlossen wurde, wenn das Ticket-System ihn nennt.
+    const geschlossen = frisch.zu ? (frisch.geschlossen ?? '') : ''
+
     return {
       schluessel: one.schluessel,
       titel: frisch.titel === '' ? one.titel : frisch.titel,
       zu: frisch.zu,
       grund: grundVon(frisch, namen),
+      ...(geschlossen === '' ? {} : { geschlossen }),
     }
   })
 

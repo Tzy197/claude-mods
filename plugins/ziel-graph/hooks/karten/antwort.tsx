@@ -4,6 +4,7 @@ import type { EngineInterface, On, RenderElement, SessionSendResult } from 'clau
 import type { ZielGraphAntwort } from '../../types'
 
 import { nameVon } from '../chats'
+import { ruhende } from '../plan/dauer'
 import { KARTEN_START, KEINE_CHATS, LEERER_PLAN, NICHTS_GELADEN, NIE_GESENDET } from '../zustand'
 
 import { detail, sicht } from './karten'
@@ -224,8 +225,11 @@ export const registriereAntwort = (on: On): void => {
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const baum = await next(e)
     const laufend = await read($, chats)
-    const plan = (await read($, geladen)).plan ?? LEERER_PLAN
-    const gewaehlt = sicht(plan, laufend, (await read($, ansicht)).wahl).gewaehlt
+    const lage = await read($, geladen)
+    const plan = lage.plan ?? LEERER_PLAN
+    // Dieselbe Karte, die die Ansicht als gewählt zeigt: Was ruht, hat dort nur eine Karte.
+    const ruhend = ruhende(plan, laufend, laufend.gelesen || lage.gelesen)
+    const gewaehlt = sicht(plan, laufend, (await read($, ansicht)).wahl, null, ruhend).gewaehlt
     const chat = detail(plan, laufend, gewaehlt)?.chats.find(one => one.frage !== '' && !one.istDieser)
     const stand = await read($, antwort)
 

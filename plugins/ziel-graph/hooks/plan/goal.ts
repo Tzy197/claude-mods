@@ -1,10 +1,10 @@
 import { eindeutig, kennung } from '../worte'
 
 // GOAL.md: der Anker des Plans. Die Datei liegt in der Wurzel des Repos und nennt das
-// Endziel, die Zwischenziele auf dem Weg, je Strang das größere Ziel und die Festlegungen
-// des Nutzers. Dazu darf sie sagen, welche Labels des Ticket-Systems etwas bedeuten. Hier
-// wird sie nur gelesen: Schreiben tut sie der Chat, auf Zuruf des Nutzers.
-// Kein `$`, kein Zustand.
+// Endziel, die Zwischenziele auf dem Weg, je Strang das größere Ziel, seine Art (Ziel oder
+// Dauerläufer) und wer ihn macht, und die Festlegungen des Nutzers. Dazu darf sie sagen,
+// welche Labels des Ticket-Systems etwas bedeuten. Hier wird sie nur gelesen: Schreiben tut
+// sie der Chat, auf Zuruf des Nutzers. Kein `$`, kein Zustand.
 
 export type GoalZwischenziel = {
   // die feste Kennung, unter der auch das Modell das Zwischenziel nennt
@@ -26,6 +26,11 @@ export type GoalStrang = {
   gehoertZu: string
   // was hinter „Gehört zu:“ steht, wörtlich
   gehoertZuText: string
+  // was „Art:“ sagt: 'ziel' hat ein Ende, 'dauer' ist ein Dauerläufer. '' wenn die Zeile
+  // fehlt, offen ist oder keine der zwei Arten nennt: Dann entscheidet das Modell.
+  art: '' | 'ziel' | 'dauer'
+  // wer den Strang macht, laut „Wer:“; '' ohne
+  wer: string
 }
 
 export type Goal = {
@@ -69,6 +74,8 @@ export const GOAL_FORMAT = `# Ziel
 ### <Name des Strangs>
 Ziel: <wohin dieser Strang führt, oder leer>
 Gehört zu: <eines der Zwischenziele, wenn es passt>
+Art: <Ziel oder Dauerläufer; die Zeile darf fehlen>
+Wer: <wer diesen Strang macht; die Zeile darf fehlen>
 
 ## Festlegungen
 - <ein Satz, der bei jedem Ableiten des Plans gewinnt>`
@@ -132,7 +139,9 @@ const teilVon = (titel: string): Exclude<Teil, 'kein'> | null => {
 }
 
 const LISTE = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/
-const FELD = /^(ziel|geh(?:ö|oe)rt\s+zu|teil\s+von)\s*[:：]\s*(.*)$/i
+const FELD = /^(ziel|geh(?:ö|oe)rt\s+zu|teil\s+von|art|typ|wer|zust(?:ä|ae)ndig|verantwortlich)\s*[:：]\s*(.*)$/i
+const FELD_ART = /^(art|typ)$/i
+const FELD_WER = /^(wer|zust(?:ä|ae)ndig|verantwortlich)$/i
 // Die Zeilen des Abschnitts „Tracker“: „Blockiert: <Label>“, „Wartet auf Auskunft: <Label>“
 // und „Bereich: <Präfix>“, je auch in der Mehrzahl und auf Englisch.
 const TRACKER_FELD =
@@ -145,7 +154,24 @@ const labelsAus = (wert: string): string[] =>
     .map(one => glatt(one).replace(/^[„"“'‚‘]+|[“"”'‘’]+$/g, ''))
     .filter(one => !istOffen(one))
 
-type RohStrang = { name: string; ziel: string; gehoertZuText: string; ausListe: boolean }
+type RohStrang = { name: string; ziel: string; gehoertZuText: string; artText: string; wer: string; ausListe: boolean }
+
+const neuerStrang = (name: string, ziel: string, ausListe: boolean): RohStrang => ({
+  name,
+  ziel,
+  gehoertZuText: '',
+  artText: '',
+  wer: '',
+  ausListe,
+})
+
+// Was hinter „Art:“ steht: „Dauerläufer“, „Dauerlaeufer“ oder „dauer“ ist ein Dauerläufer,
+// „Ziel“ ein Ziel. null: Dort steht etwas anderes.
+const artVon = (wert: string): GoalStrang['art'] | null => {
+  const name = kennung(wert)
+
+  return name === '' ? '' : name.startsWith('dauer') ? 'dauer' : name.startsWith('ziel') ? 'ziel' : null
+}
 
 // Liest GOAL.md in einem Durchgang: die Ziele und, getrennt davon, was der Abschnitt
 // „Tracker“ über die Labels sagt. Die Datei darf unvollständig sein: Was fehlt oder „noch
@@ -206,7 +232,7 @@ const zerlege = (roh: string | null): { goal: Goal; tracker: TrackerNamen } => {
       if (teil === 'straenge' && tiefe > ebene) {
         const name = titel.replace(/[:：]\s*$/, '')
 
-        strang = istOffen(name) ? null : { name, ziel: '', gehoertZuText: '', ausListe: false }
+        strang = istOffen(name) ? null : neuerStrang(name, '', false)
 
         if (strang !== null) {
           straenge.push(strang)
@@ -304,12 +330,17 @@ const zerlege = (roh: string | null): { goal: Goal; tracker: TrackerNamen } => {
 
     if (feld !== null) {
       const wert = glatt(feld[2] ?? '')
+      const genannt = istOffen(wert) ? '' : wert
       const istZiel = /^ziel$/i.test(feld[1] ?? '')
 
       if (strang !== null && istZiel) {
-        strang.ziel = istOffen(wert) ? '' : wert
+        strang.ziel = genannt
+      } else if (strang !== null && FELD_ART.test(feld[1] ?? '')) {
+        strang.artText = genannt
+      } else if (strang !== null && FELD_WER.test(feld[1] ?? '')) {
+        strang.wer = genannt
       } else if (strang !== null) {
-        strang.gehoertZuText = istOffen(wert) ? '' : wert
+        strang.gehoertZuText = genannt
       }
 
       istZielOffen = istZiel && strang !== null
@@ -323,9 +354,7 @@ const zerlege = (roh: string | null): { goal: Goal; tracker: TrackerNamen } => {
       const ziel = glatt(stuecke?.[2] ?? '')
 
       istZielOffen = false
-      strang = istOffen(name)
-        ? null
-        : { name, ziel: istOffen(ziel) ? '' : ziel, gehoertZuText: '', ausListe: true }
+      strang = istOffen(name) ? null : neuerStrang(name, istOffen(ziel) ? '' : ziel, true)
 
       if (strang !== null) {
         straenge.push(strang)
@@ -395,12 +424,22 @@ const zerlege = (roh: string | null): { goal: Goal; tracker: TrackerNamen } => {
       )
     }
 
+    const art = artVon(einer.artText)
+
+    if (art === null) {
+      hinweise.push(
+        `GOAL.md, Strang „${einer.name}“: „Art: ${einer.artText}“ nennt weder „Ziel“ noch „Dauerläufer“: Die Zeile zählt nicht.`,
+      )
+    }
+
     fertig.push({
       id: eindeutig(kennung(einer.name) || 'strang', vergeben),
       name: einer.name,
       ziel: einer.ziel,
       gehoertZu,
       gehoertZuText: einer.gehoertZuText,
+      art: art ?? '',
+      wer: einer.wer,
     })
   }
 
@@ -463,6 +502,7 @@ export const promptGoalAnlegen = (): string =>
     `Lies dazu README.md, CLAUDE.md und die Doku unter docs/ und schlag mir einen Entwurf vor. ${REGELN}`,
     `Das Format:\n\n${GOAL_FORMAT}`,
     'Die Stränge sind später die Bahnen des Graphen und die Spalten der Karten: wenige, je ein bis zwei Worte, so wie das Projekt seine Arbeit selbst gliedert.',
+    'Ein Strang ist ein Ziel, wenn er ein Ende hat, und ein Dauerläufer, wenn er ohne Ende neben den Zielen herläuft, zum Beispiel Werkzeug, Tests oder Betrieb: Dann steht bei ihm „Art: Dauerläufer“. „Wer:“ nennt, wer den Strang macht. Beide Zeilen dürfen fehlen.',
     'Unter „Festlegungen“ stehen Sätze von mir, die bei jedem Ableiten des Plans gelten. Der Abschnitt bleibt leer, solange ich keine nenne: Schlag selbst keine vor.',
   ].join('\n\n')
 
@@ -491,6 +531,30 @@ export const promptStrangZiel = (frage: StrangFrage): string =>
     frage.buendel.length === 0
       ? ''
       : `Was der Plan in diesem Strang sieht:\n${frage.buendel.map(one => `- ${one}`).join('\n')}`,
+    REGELN,
+  ]
+    .filter(one => one !== '')
+    .join('\n\n')
+
+export type DauerFrage = {
+  name: string
+  // true: Der Strang steht schon in GOAL.md
+  inGoal: boolean
+  // die Titel der erledigten Bündel des Strangs, damit der Chat weiß, worum es geht
+  erledigt: readonly string[]
+}
+
+// Der Auftrag, einen Strang, in dem alles erledigt ist, mit dem Nutzer zum Dauerläufer zu
+// machen: Der Chat trägt „Art: Dauerläufer“ in GOAL.md ein, wenn der Nutzer zustimmt.
+export const promptDauerlaeufer = (frage: DauerFrage): string =>
+  [
+    `Im Strang „${frage.name}“ ist alles erledigt, was der Plan dort kennt. Klär mit mir, ob der Strang damit seine Basis erreicht hat und ab jetzt als Dauerläufer weiterläuft: ohne Ende, neben den Zielen, für das, was dort immer wieder anfällt.`,
+    frage.inGoal
+      ? `Wenn ja, trag es in GOAL.md ein: Der Strang steht schon unter „## Stränge“. Setz unter „### ${frage.name}“ die Zeile „Art: Dauerläufer“. Ändere sonst nichts an der Datei.`
+      : `Wenn ja, trag es in GOAL.md ein: Der Strang steht dort noch nicht, der Plan hat ihn in den anderen Quellen gefunden. Leg ihn unter „## Stränge“ als „### ${frage.name}“ mit der Zeile „Art: Dauerläufer“ an. Ändere sonst nichts an der Datei.`,
+    frage.erledigt.length === 0
+      ? ''
+      : `Was der Plan in diesem Strang als erledigt sieht:\n${frage.erledigt.map(one => `- ${one}`).join('\n')}`,
     REGELN,
   ]
     .filter(one => one !== '')
