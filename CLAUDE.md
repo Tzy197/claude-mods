@@ -13,6 +13,7 @@ claude plugin test plugins/<mod>            # die Tests eines Mods
 ## Wo was steht
 
 - `docs/ziel-graph-spec.md`: Entscheidungen, Begriffe, Bauschritte und Lehren zum Ziel-Graphen.
+- `docs/orchestrator.md`: wie der Mod `ziel-graph` gebaut ist: Plan und Ableiten, `GOAL.md` mit Format und Beispiel, Tickets, Chats, beide Ansichten, Speicherort, Dateien.
 - `docs/entscheidungskarten-stand.md`: Stand des Grillings zu den Entscheidungskarten.
 - `docs/offen.md`: Fahrplan, offene Tests, offene Grilling-Themen.
 
