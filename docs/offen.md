@@ -49,6 +49,24 @@ Dazu je Repo eine kleine Einstellung mit Vorgabe: Welches Label heißt bereit, b
 
 Gebaut wird in einer Session auf dem privaten Rechner, direkt in diesem Repo. Ein zweiter Rechner holt nur ab und testet.
 
+## Was noch zu bauen ist
+
+Vorschlag vom 2026-10-05, die Reihenfolge ist noch nicht entschieden. Er ersetzt die Schritte 5 bis 8 des Fahrplans oben. Stand: Der installierte Ziel-Graph (0.2.1) zeigt echte Chats, aber als Graph nur Beispieldaten. Ableiten, das Aussehen „Ruhig“, die Streifen mit Pfeil-Knopf und die Pfeilspitzen stecken nur im lokalen Versuch `versuche/ableiten-versuch`. Der Orchestrator (0.1.0) ist installiert und in der App noch nicht angesehen.
+
+| Nr. | Was | Warum | Größe |
+| --- | --- | --- | --- |
+| 1 | Ziel-Graph auf den echten Plan umstellen: Ableiten, „Ruhig“, Streifen, Pfeil-Knopf und Pfeilspitzen aus dem Versuch übernehmen; Chats an ihre Zeile hängen | Der installierte Graph zeigt sonst weiter erfundene Daten | groß |
+| 2 | Ein Plan für beide Mods: eine Ableitung, ein Speicherort, `GOAL.md` als Anker auch im Graphen | Heute leiten Graph und Orchestrator getrennt ab und können zwei verschiedene Pläne zeigen | mittel |
+| 3 | Orchestrator nach dem ersten Test in der App nachbessern | Spalten, Breite und der Versuch „von hier antworten“ sind ungesehen | klein bis mittel |
+| 4 | Festlegungen, der vorige Plan als Eingabe, und nach jedem Ableiten zeigen, was sich geändert hat | Zwei Läufe ergaben zwei verschiedene Bilder; `GOAL.md` hält nur die Stränge fest, nicht die Schritte | mittel |
+| 5 | Tickets als Quelle: GitLab, GitHub, Markdown; Stand live aus dem Tracker ohne Modell-Aufruf | Getestet ist nur ein Repo mit guter Doku; mit Tickets wird der Stand genau | groß |
+| 6 | Fragen eines Chats im Orchestrator: die echte Rückfrage abfangen, als Bild aufbereiten, dort beantworten | Das sind die Entscheidungskarten; sie gehören eher in den Orchestrator als in einen dritten Mod. Die Grilling-Themen D, E und F gelten dafür weiter | groß |
+| 7 | Chats aufräumen: fertige Chats erkennen und herausnehmen | Ein fertiger Chat bleibt mit seiner letzten Frage stehen, bis zu 14 Tage | klein |
+| 8 | Dauerläufer ein- und ausklappen, Zuständigkeit je Bahn | Entscheidungen 6 bis 8 und 14 der Spezifikation, noch nicht gebaut | mittel |
+| 9 | Aufräumen: den Versuch nach dem Übernehmen löschen, `UEBERGABE.md` ablösen | Beides ist dann überholt | klein |
+
+Kein Bau, aber offen: Test 4 am zweiten Rechner (zeichnet ein zugeschaltetes Gerät die Leiste?) und Test 5 in einem Repo mit Tracker.
+
 ## Noch zu testen
 
 1. **Graph in der echten Leiste.** Erscheint er nach `/graph`, passt die Breite, scrollt er, gehen Knöpfe und Farbwahl?
