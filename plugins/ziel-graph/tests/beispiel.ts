@@ -1,14 +1,13 @@
-import type { ZielGraphDaten } from '../types'
+import { STAMM } from '../hooks/graph/daten'
+import type { GraphDaten } from '../hooks/graph/daten'
 
-// Feste Beispieldaten: ein erfundenes Projekt (ein Web-Shop). Sie zeigen jede
-// Art von Zeile einmal: erledigt, läuft, bereit, teilweise blockiert, blockiert,
-// aufklappbares Bündel, Chat-Marke, „wartet auf“-Linie, zwei Dauerläufer und die
-// Bahnen einer zweiten Person. Ein späterer Schritt ersetzt dieses Objekt durch
-// abgeleitete Daten derselben Form.
+// Testdaten für die Zeichenlogik des Graphen: ein erfundenes Projekt (ein Web-Shop). Sie
+// zeigen jede Art von Zeile einmal: erledigt, läuft, bereit, teilweise blockiert, blockiert,
+// aufklappbares Bündel, Chat-Marke, „wartet auf“-Linie, zwei Dauerläufer und die Bahnen
+// einer zweiten Person. Bis Version 0.2.1 zeigte die Leiste sie als Beispiel-Graph; seit es
+// den abgeleiteten Plan gibt, prüfen nur noch die Tests damit Filter und Linien.
 
-export const STAMM = 'stamm'
-
-export const BEISPIEL: ZielGraphDaten = {
+export const BEISPIEL: GraphDaten = {
   endziel: 'Endziel: der Shop im Betrieb',
 
   personen: [

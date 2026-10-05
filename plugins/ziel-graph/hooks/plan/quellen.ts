@@ -1,23 +1,14 @@
-import type { FsEntry, ProcessRunResult, SessionRepo } from 'claude-code'
+import type { FsEntry } from 'claude-code'
 
-import type { OrchestratorChat, OrchestratorChats } from '../types'
+import { liesChats, nameVon, schluesselVon } from '../chats'
+import type { ChatZugang, LeseZugang } from '../chats'
 
 // Die Quellen eines Laufs: was das Repo über sich weiß. GOAL.md steht an erster Stelle,
 // danach kommen Doku, laufende Chats und Git-Verlauf. Ein Repo mit Tickets bekommt hier
 // später eine weitere Quelle. Kein `$`: register.tsx baut aus `$` einen Zugang und reicht
 // ihn hierher.
 
-export type QuellenZugang = {
-  sitzung: () => Promise<string>
-  heim: () => Promise<string>
-  repo: () => Promise<SessionRepo | null>
-  wurzel: () => Promise<string>
-  jetzt: () => Promise<number>
-  gibtEs: (pfad: string) => Promise<boolean>
-  liste: (pfad: string) => Promise<FsEntry[]>
-  lies: (pfad: string) => Promise<string>
-  laufe: (argv: readonly string[]) => Promise<ProcessRunResult>
-}
+export type QuellenZugang = LeseZugang & Pick<ChatZugang, 'laufe'>
 
 // Eine Markdown-Datei des Repos, so wie das Modell sie bekommt.
 export type QuellDoku = {
@@ -65,47 +56,8 @@ export const COMMITS = 30
 const DOKU_DATEIEN = 40
 const DOKU_TIEFE = 4
 const CHATS = 12
-const VERALTET_MS = 14 * 24 * 60 * 60_000
-
-// ---------- Schlüssel eines Repos (wie in ziel-graph/hooks/chats.ts) ----------
-
-// Host und Pfad aus der Adresse von origin. Die SSH- und die HTTPS-Form desselben Repos
-// ergeben dasselbe; Zugangsdaten, Port und ".git" fallen weg. Ein lokaler Pfad hat keinen Host.
-const zerlege = (remote: string): { host: string; pfad: string } => {
-  const adresse = remote.trim().replace(/^([a-z][a-z0-9+.-]*:\/\/)?[^@/]*@/i, '$1')
-  const url = /^[a-z][a-z0-9+.-]*:\/\/([^/]*)\/?(.*)$/i.exec(adresse)
-  const scp = /^([^/:]{2,}):(.*)$/.exec(adresse)
-  const [host, pfad] =
-    url !== null ? [url[1], url[2]] : scp !== null ? [scp[1], scp[2]] : ['', adresse]
-
-  return {
-    host: (host ?? '').replace(/:\d+$/, '').toLowerCase(),
-    pfad: (pfad ?? '').replace(/[\\/]+$/, '').replace(/\.git$/i, ''),
-  }
-}
-
-// Die Stücke eines Pfads: klein geschrieben und nur aus Zeichen, die jeder Ordnername verträgt.
-const stuecke = (pfad: string): string[] =>
-  pfad
-    .split(/[\\/]+/)
-    .filter(one => one !== '')
-    .map(one => one.toLowerCase().replace(/[^a-z0-9._-]/g, '_'))
-
-// Der Schlüssel eines Repos, als Ordnername: "host+gruppe+projekt" aus der Adresse von
-// origin, ohne origin "lokal+…" aus dem ganzen Pfad der Wurzel. Derselbe wie in ziel-graph:
-// Unter ihm liegen dort die Chat-Stände, die dieser Mod liest.
-export const schluessel = (remote: string | null, wurzel: string): string => {
-  const { host, pfad } = zerlege(remote ?? '')
-  const ausRemote = [...stuecke(host), ...stuecke(pfad)].join('+')
-  const ausWurzel = ['lokal', ...stuecke(wurzel)].join('+')
-
-  // Nur Punkte wären ein Weg aus dem Ordner hinaus.
-  return (/^\.*$/.test(ausRemote) ? ausWurzel : ausRemote).slice(-200)
-}
 
 // ---------- Kleine Helfer ----------
-
-const text = (wert: unknown): string => (typeof wert === 'string' ? wert : '')
 
 const kurz = (wert: string, laenge: number): string => {
   const glatt = wert.replace(/\s+/g, ' ').trim()
@@ -127,13 +79,6 @@ const listeOrdner = async (zugang: QuellenZugang, pfad: string): Promise<FsEntry
   } catch {
     return []
   }
-}
-
-// Der Schlüssel des Repos, in dem die Session läuft. Alle Worktrees teilen ihn.
-export const schluesselVon = async (zugang: QuellenZugang): Promise<string> => {
-  const repo = await zugang.repo()
-
-  return schluessel(repo?.remote ?? null, repo?.root ?? (await zugang.wurzel()))
 }
 
 // ---------- GOAL.md ----------
@@ -225,56 +170,20 @@ const liesDoku = async (
 
 // ---------- Die laufenden Chats ----------
 
-const alsObjekt = (roh: string | null): Record<string, unknown> | null => {
-  try {
-    const wert: unknown = JSON.parse(roh ?? '')
-
-    return typeof wert === 'object' && wert !== null ? (wert as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
-
-// Die Chats, die auch die Leiste von ziel-graph zeigt: angemeldet und in den letzten
-// 14 Tagen angefasst. Gelesen werden die Dateien, die ziel-graph je Session schreibt; dieser
-// Mod schreibt dort nie. Das Neueste steht zuerst; bei gleicher Zeit entscheidet die id.
-const liesLaufende = async (zugang: QuellenZugang, name: string): Promise<OrchestratorChat[]> => {
-  const ordner = `${await zugang.heim()}/.claude/ziel-graph/${name}`
-  const jetzt = await zugang.jetzt()
-  const dateien = (await listeOrdner(zugang, ordner)).filter(
-    one => one.kind === 'file' && one.name.endsWith('.json'),
-  )
-  const chats: OrchestratorChat[] = []
-
-  for (const datei of dateien) {
-    const roh = alsObjekt(await liesText(zugang, `${ordner}/${datei.name}`))
-    const zeit = typeof roh?.zeit === 'number' ? roh.zeit : 0
-    const angefasst = zeit || datei.mtimeMs
-    const istFrisch = angefasst === 0 || jetzt - angefasst < VERALTET_MS
-
-    if (roh !== null && text(roh.id) !== '' && roh.aktiv === true && istFrisch) {
-      chats.push({
-        id: text(roh.id),
-        name: kurz(text(roh.name), 60) || 'Chat ohne Namen',
-        branch: kurz(text(roh.branch), 80),
-        stand: kurz(text(roh.stand), 300),
-        naechster: kurz(text(roh.naechster), 300),
-        frage: kurz(text(roh.frage), 300),
-        zeit,
-      })
-    }
-  }
-
-  return chats.sort((a, b) => b.zeit - a.zeit || (a.id < b.id ? -1 : 1))
-}
-
-// Die Chats des Repos, wie die Fläche sie zeigt. Ohne die Dateien von ziel-graph ist die
-// Liste leer, und die Karten tragen keine Chat-Marke.
-export const liesChats = async (zugang: QuellenZugang): Promise<OrchestratorChats> => ({
-  ich: await zugang.sitzung(),
-  chats: await liesLaufende(zugang, await schluesselVon(zugang)),
-  gelesen: await zugang.jetzt(),
-})
+// Die Chats, die ans Modell gehen: dieselben, die beide Ansichten zeigen, gelesen vom
+// Chat-Modul des Mods. Das Neueste steht zuerst; bei gleicher Zeit entscheidet die id, damit
+// die Kennungen (c1, c2, …) nicht vom Zufall abhängen. Lange Texte sind gekürzt.
+const liesLaufende = async (zugang: QuellenZugang): Promise<Omit<QuellChat, 'kennung'>[]> =>
+  [...(await liesChats(zugang)).chats]
+    .sort((a, b) => b.zeit - a.zeit || (a.id < b.id ? -1 : 1))
+    .map(one => ({
+      id: one.id,
+      name: kurz(nameVon(one), 60),
+      branch: kurz(one.branch, 80),
+      stand: kurz(one.stand, 300),
+      naechster: kurz(one.naechster, 300),
+      frage: kurz(one.frage, 300),
+    }))
 
 // ---------- Der Git-Verlauf ----------
 
@@ -328,23 +237,13 @@ export const sammle = async (zugang: QuellenZugang): Promise<Quellen> => {
     doku = await liesDoku(zugang, repo.root, hinweise)
   }
 
-  const laufende = await liesLaufende(zugang, name)
+  const laufende = await liesLaufende(zugang)
 
   if (laufende.length > CHATS) {
     hinweise.push(`${laufende.length - CHATS} Chats ausgelassen: Es gehen höchstens ${CHATS} ans Modell.`)
   }
 
-  const chats = laufende.slice(0, CHATS).map(
-    (one, i): QuellChat => ({
-      id: one.id,
-      kennung: `c${i + 1}`,
-      name: one.name,
-      branch: one.branch,
-      stand: one.stand,
-      naechster: one.naechster,
-      frage: one.frage,
-    }),
-  )
+  const chats = laufende.slice(0, CHATS).map((one, i): QuellChat => ({ ...one, kennung: `c${i + 1}` }))
   const commits = await liesCommits(zugang, hinweise)
 
   if (goal !== null && goal.length > DOKU_GRENZE) {

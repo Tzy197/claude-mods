@@ -3,18 +3,12 @@
   "owner": {
     "name": "Tzy197"
   },
-  "description": "Eigene Mods für Claude Code: der Ziel-Graph und der Orchestrator.",
+  "description": "Eigene Mods für Claude Code: der Ziel-Graph mit seinen zwei Ansichten, dem Graphen und den Prozesskarten.",
   "plugins": [
     {
       "name": "ziel-graph",
       "source": "./plugins/ziel-graph",
-      "description": "Seitenleiste mit den laufenden Chats eines Repos: Stand, nächster Schritt, offene Frage. Der Graph der Ziele zeigt bis zum ersten Plan nur Beispieldaten."
-    },
-    {
-      "name": "orchestrator",
-      "source": "./plugins/orchestrator",
-      "version": "0.1.0",
-      "description": "Breite Fläche neben dem Chat: der Plan des Repos als Prozesskarten, je Strang eine Spalte, mit GOAL.md als Anker. Aufträge starten und wartende Chats beantworten, ohne den Chat zu wechseln."
+      "description": "Der Plan eines Repos in zwei Ansichten, mit GOAL.md als Anker: /graph zeigt schmal die laufenden Chats und den Plan als Graph, /orchestrator breit denselben Plan als Prozesskarten."
     }
   ]
 }

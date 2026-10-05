@@ -1,6 +1,7 @@
-import type { OrchestratorFarben, OrchestratorZone } from '../types'
+import type { ZielGraphFarben, ZielGraphZone } from '../../types'
 
-import { ZONEN_FOLGE, ZONEN_NAME } from './ableiten'
+import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
+
 import { chatMarke, zeichenText } from './karten'
 import type { Karte, KartenZeichen, Sicht } from './karten'
 
@@ -136,7 +137,7 @@ const umbruch = (wert: string, px: number, groesse: number, fett: boolean): stri
 // Die Farben eines Bildes. Sie stehen als Attribute am Element, damit das Bild auch ohne
 // <style> stimmt. Bei 'auto' kommt je Rolle eine Klasse dazu, die ein <style>-Block im
 // dunklen Schema überschreibt; er nennt nur die Rollen, die das Bild wirklich nutzt.
-const stift = (farben: OrchestratorFarben, strang: Paar) => {
+const stift = (farben: ZielGraphFarben, strang: Paar) => {
   const regeln = new Map<string, string>()
   const paarVon = (rolle: Rolle): Paar =>
     rolle === 'strang' ? strang : { hell: HELL[rolle], dunkel: DUNKEL[rolle] }
@@ -233,7 +234,7 @@ const zeichne = (zeichen: KartenZeichen, cx: number, cy: number, voll: string, k
 
 export type KartenWahl = {
   breite: number
-  farben: OrchestratorFarben
+  farben: ZielGraphFarben
   // die Verbindungslinie über und unter der Karte
   oben: Linie
   unten: Linie
@@ -309,7 +310,7 @@ export const kopfBild = (
   // die Breite einer Karte; `gesamt` ist die Breite des Bildes, mit dem Platz für den Knopf
   breite: number,
   gesamt: number,
-  farben: OrchestratorFarben,
+  farben: ZielGraphFarben,
 ): Bild => {
   const { farbe, stil } = stift(farben, strang)
   const innen = breite - LUFT
@@ -327,7 +328,7 @@ export const kopfBild = (
 }
 
 // Der Rand links: der Name des Abschnitts und ein Strich, der zeigt, wie weit er reicht.
-export const randBild = (titel: string, hoehe: number, betont: boolean, farben: OrchestratorFarben): Bild => {
+export const randBild = (titel: string, hoehe: number, betont: boolean, farben: ZielGraphFarben): Bild => {
   const { farbe, stil } = stift(farben, ZIEL)
   const worte = titel.toUpperCase().split(' ')
   const teile = [
@@ -348,7 +349,7 @@ export const fuellBild = (
   breite: number,
   hoehe: number,
   linie: Linie,
-  farben: OrchestratorFarben,
+  farben: ZielGraphFarben,
 ): Bild => {
   const { farbe, stil } = stift(farben, strang)
 
@@ -361,7 +362,7 @@ export const endeBild = (
   strang: Paar,
   breite: number,
   gesamt: number,
-  farben: OrchestratorFarben,
+  farben: ZielGraphFarben,
 ): Bild => {
   const { farbe, stil } = stift(farben, strang)
   const teile = [
@@ -412,7 +413,7 @@ export const wunschZellen = (straenge: number): number =>
 export type Zelle = { bild: Bild; knopf: string }
 
 export type FlaechenBand = {
-  zone: OrchestratorZone
+  zone: ZielGraphZone
   titel: string
   rand: Bild
   // je Strang die Zellen von oben nach unten; in jeder Spalte gleich hoch
@@ -439,7 +440,7 @@ export type Flaeche = {
 export type FlaechenWahl = {
   // die Breite der Leiste in Zeichenzellen
   zellen: number
-  farben: OrchestratorFarben
+  farben: ZielGraphFarben
 }
 
 // Baut aus der Sicht die Fläche: der Kopf je Strang, je Abschnitt ein Band mit einer Spalte

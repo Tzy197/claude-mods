@@ -1,19 +1,21 @@
 import type {
-  OrchestratorBuendel,
-  OrchestratorChat,
-  OrchestratorChats,
-  OrchestratorPlan,
-  OrchestratorStrang,
-  OrchestratorZone,
-} from '../types'
+  ZielGraphBuendel,
+  ZielGraphChat,
+  ZielGraphChats,
+  ZielGraphPlan,
+  ZielGraphStrang,
+  ZielGraphZone,
+} from '../../types'
 
-import { ZONEN_FOLGE, ZONEN_NAME } from './ableiten'
-import { ENDZIEL } from './daten'
-import type { StrangFrage } from './goal'
-import { mehrzahl } from './worte'
+import { nameVon } from '../chats'
+import { ENDZIEL } from '../fest'
+import { ZONEN_FOLGE, ZONEN_NAME } from '../plan/ableiten'
+import { endzielZeile, laufende, zielTitel } from '../plan/lesen'
+import { mehrzahl } from '../worte'
 
-// Aus Plan und laufenden Chats werden Karten: was die Fläche zeigt, was die Detail-Fläche
-// zu einer Karte sagt und welchen Auftrag ein Knopf ins Eingabefeld legt. Kein `$`, kein Bild.
+// Aus dem einen Plan und den laufenden Chats werden Karten: was die Fläche zeigt, was die
+// Detail-Fläche zu einer Karte sagt und welchen Auftrag ein Knopf ins Eingabefeld legt.
+// Kein `$`, kein Bild.
 
 export type KartenZeichen =
   | 'erledigt'
@@ -32,7 +34,7 @@ export type Karte = {
   art: 'buendel' | 'fertig' | 'stamm' | 'endziel'
   // id des Strangs; '' auf dem Stamm
   strang: string
-  zone: OrchestratorZone | 'stamm'
+  zone: ZielGraphZone | 'stamm'
   zeichen: KartenZeichen
   titel: string
   meta: string
@@ -44,14 +46,14 @@ export type Karte = {
 }
 
 export type Spalte = {
-  strang: OrchestratorStrang
+  strang: ZielGraphStrang
   // true: Für den Strang ist kein Ziel festgelegt
   ohneZiel: boolean
   // die Zeilen unter dem Namen, höchstens zwei
   kopf: string[]
   // wohin die Spalte unten führt: „→ Großer Umbau“
   wohin: string
-  karten: Record<OrchestratorZone, Karte[]>
+  karten: Record<ZielGraphZone, Karte[]>
 }
 
 export type Sicht = {
@@ -59,7 +61,7 @@ export type Sicht = {
   // Zwischenziele oder Treffpunkt, die Schritte danach und zuletzt das Endziel
   stamm: Karte[]
   // laufende Chats, die an keiner Karte hängen
-  ohneKarte: OrchestratorChat[]
+  ohneKarte: ZielGraphChat[]
   // der Schlüssel der gewählten Karte; '' wenn keine gewählt ist
   gewaehlt: string
   zaehler: string
@@ -81,7 +83,7 @@ const ZEICHEN_TEXT: Record<KartenZeichen, string> = {
   endziel: '◎',
 }
 
-const STAND_WORT: Record<OrchestratorBuendel['stand'], string> = {
+const STAND_WORT: Record<ZielGraphBuendel['stand'], string> = {
   erledigt: 'erledigt',
   bereit: 'bereit',
   teilweise: 'zum Teil möglich',
@@ -93,19 +95,8 @@ export const zeichenText = (karte: Karte): string => ZEICHEN_TEXT[karte.zeichen]
 export const chatMarke = (karte: Karte): string =>
   karte.chat === '' ? '' : karte.chat === 'wartet' ? 'Chat wartet auf dich' : 'Chat läuft'
 
-// Die Chats eines Bündels, die gerade laufen: Zugeordnet hat sie das Modell, ob sie noch
-// da sind und ob sie warten, sagen die Dateien von ziel-graph.
-const laufende = (eines: OrchestratorBuendel, chats: OrchestratorChats): OrchestratorChat[] =>
-  chats.chats.filter(one => eines.chats.includes(one.id))
-
-// Der Titel dessen, worauf ein Bündel wartet; '' ohne.
-const zielTitel = (plan: OrchestratorPlan, id: string): string =>
-  id === ''
-    ? ''
-    : (plan.buendel.find(one => one.id === id)?.titel ?? plan.stamm.find(one => one.id === id)?.titel ?? '')
-
 // Die zweite Zeile einer Karte: worauf sie wartet, sonst ihr Fortschritt.
-const metaVon = (plan: OrchestratorPlan, eines: OrchestratorBuendel): string => {
+const metaVon = (plan: ZielGraphPlan, eines: ZielGraphBuendel): string => {
   const ziel = zielTitel(plan, eines.wartetAuf)
   const grund =
     ziel === '' || (eines.stand === 'teilweise' && eines.meta !== '') ? eines.meta : `wartet auf: ${ziel}`
@@ -118,7 +109,7 @@ const metaVon = (plan: OrchestratorPlan, eines: OrchestratorBuendel): string => 
 }
 
 // Was im Kopf einer Spalte unter dem Namen steht.
-const kopfVon = (plan: OrchestratorPlan, strang: OrchestratorStrang): string[] => {
+const kopfVon = (plan: ZielGraphPlan, strang: ZielGraphStrang): string[] => {
   const fremd = plan.mitGoal && !strang.inGoal ? 'nicht in GOAL.md' : ''
 
   if (strang.ziel !== '') {
@@ -133,7 +124,7 @@ const kopfVon = (plan: OrchestratorPlan, strang: OrchestratorStrang): string[] =
 
 // Wohin ein Strang führt: zu seinem Zwischenziel aus GOAL.md, sonst zum Treffpunkt, sonst
 // zum Endziel. Ein Dauerläufer ohne Zwischenziel läuft weiter.
-const wohinVon = (plan: OrchestratorPlan, strang: OrchestratorStrang): string => {
+const wohinVon = (plan: ZielGraphPlan, strang: ZielGraphStrang): string => {
   const zwischenziel = plan.stamm.find(one => one.id === strang.gehoertZu)
   const treffpunkt = plan.stamm.find(one => one.art === 'treffpunkt')
 
@@ -144,12 +135,12 @@ const wohinVon = (plan: OrchestratorPlan, strang: OrchestratorStrang): string =>
 
 // Macht aus dem Plan und den laufenden Chats, was die Fläche zeigt. `wahl` ist die Karte,
 // die der Nutzer gewählt hat; ohne Wahl gilt die erste, an der ein Chat auf ihn wartet.
-export const sicht = (plan: OrchestratorPlan, chats: OrchestratorChats, wahl: string): Sicht => {
+export const sicht = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string): Sicht => {
   const alle: Karte[] = []
   const spalten = plan.straenge.map((strang): Spalte => {
     const eigene = plan.buendel.filter(one => one.strang === strang.id)
     const fertig = eigene.filter(one => one.zone === 'hinter')
-    const karten: Record<OrchestratorZone, Karte[]> = { hinter: [], jetzt: [], spaeter: [] }
+    const karten: Record<ZielGraphZone, Karte[]> = { hinter: [], jetzt: [], spaeter: [] }
 
     if (fertig.length > 0) {
       karten.hinter.push({
@@ -275,14 +266,6 @@ export const sicht = (plan: OrchestratorPlan, chats: OrchestratorChats, wahl: st
   }
 }
 
-// Das Endziel als eine Zeile, so wie es über der Fläche und auf seiner Karte steht.
-export const endzielZeile = (plan: OrchestratorPlan): string =>
-  plan.endziel.herkunft === 'goal'
-    ? `Endziel: ${plan.endziel.text}`
-    : plan.endziel.herkunft === 'vermutet'
-      ? `Endziel (vermutet): ${plan.endziel.text}`
-      : 'Endziel: nicht festgelegt'
-
 // ---------- Die Detail-Fläche ----------
 
 export type DetailZeile = {
@@ -291,7 +274,7 @@ export type DetailZeile = {
   text: string
 }
 
-export type DetailChat = OrchestratorChat & {
+export type DetailChat = ZielGraphChat & {
   // true: Das ist der Chat, in dem die Fläche gerade offen ist
   istDieser: boolean
 }
@@ -316,16 +299,16 @@ const quellenZeile = (quelle: string): string =>
         ? 'Quelle: nicht genannt'
         : `Quelle: ${quelle}`
 
-const zielZeile = (strang: OrchestratorStrang | undefined): string =>
+const zielZeile = (strang: ZielGraphStrang | undefined): string =>
   strang === undefined || strang.ziel === ''
     ? 'Ziel des Strangs: kein Ziel festgelegt'
     : `Ziel des Strangs: ${strang.ziel}`
 
-const mitDiesem = (chats: readonly OrchestratorChat[], ich: string): DetailChat[] =>
+const mitDiesem = (chats: readonly ZielGraphChat[], ich: string): DetailChat[] =>
   chats.map(one => ({ ...one, istDieser: one.id === ich }))
 
 // Was die Detail-Fläche zur gewählten Karte zeigt; null, wenn keine gewählt ist.
-export const detail = (plan: OrchestratorPlan, chats: OrchestratorChats, wahl: string): Detail | null => {
+export const detail = (plan: ZielGraphPlan, chats: ZielGraphChats, wahl: string): Detail | null => {
   const eines = plan.buendel.find(one => one.id === wahl)
   const strang = plan.straenge.find(one => one.id === eines?.strang || fertigId(one.id) === wahl)
   const schritt = plan.stamm.find(one => one.id === wahl)
@@ -425,7 +408,7 @@ export const detail = (plan: OrchestratorPlan, chats: OrchestratorChats, wahl: s
     return {
       id: wahl,
       kopf: 'Chat ohne Karte',
-      titel: chat.name,
+      titel: nameVon(chat),
       zeilen: [{ art: 'leise', text: 'Dieser Chat hängt im Plan an keinem Bündel.' }],
       chats: mitDiesem([chat], chats.ich),
       knoepfe: [],
@@ -438,7 +421,7 @@ export const detail = (plan: OrchestratorPlan, chats: OrchestratorChats, wahl: s
 // ---------- Die Aufträge an den Chat ----------
 
 // Was der Chat über ein Bündel wissen muss: Strang und dessen Ziel, Titel, Punkte, Quelle.
-const steckbrief = (plan: OrchestratorPlan, eines: OrchestratorBuendel): string => {
+const steckbrief = (plan: ZielGraphPlan, eines: ZielGraphBuendel): string => {
   const strang = plan.straenge.find(one => one.id === eines.strang)
   const ziel = zielTitel(plan, eines.wartetAuf)
 
@@ -461,7 +444,7 @@ const steckbrief = (plan: OrchestratorPlan, eines: OrchestratorBuendel): string 
 }
 
 // Der Arbeitsauftrag zu einem Bündel; null, wenn es das Bündel nicht gibt.
-export const auftragFuer = (plan: OrchestratorPlan, id: string): string | null => {
+export const auftragFuer = (plan: ZielGraphPlan, id: string): string | null => {
   const eines = plan.buendel.find(one => one.id === id)
 
   return eines === undefined
@@ -474,7 +457,7 @@ export const auftragFuer = (plan: OrchestratorPlan, id: string): string | null =
 }
 
 // Die Bitte, ein Bündel zu erklären; null, wenn es das Bündel nicht gibt.
-export const erklaerungFuer = (plan: OrchestratorPlan, id: string): string | null => {
+export const erklaerungFuer = (plan: ZielGraphPlan, id: string): string | null => {
   const eines = plan.buendel.find(one => one.id === id)
 
   return eines === undefined
@@ -484,19 +467,4 @@ export const erklaerungFuer = (plan: OrchestratorPlan, id: string): string | nul
         steckbrief(plan, eines),
         'Zeig es mit einem kleinen Bild: ein echtes Beispiel, vorher und nachher. Kurz und in einfachen Worten. Ändere dabei nichts im Repo.',
       ].join('\n\n')
-}
-
-// Was der Auftrag „Ziel festlegen“ über einen Strang sagt; null, wenn es den Strang nicht gibt.
-export const strangFrage = (plan: OrchestratorPlan, id: string): StrangFrage | null => {
-  const strang = plan.straenge.find(one => one.id === id)
-
-  return strang === undefined
-    ? null
-    : {
-        name: strang.name,
-        inGoal: strang.inGoal,
-        mitGoal: plan.mitGoal,
-        vermutung: strang.vermutung,
-        buendel: plan.buendel.filter(one => one.strang === strang.id).map(one => one.titel),
-      }
 }

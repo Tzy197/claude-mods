@@ -1,89 +1,68 @@
 import { atom, read, update } from 'claude-code'
-import type {
-  BoxProps,
-  ButtonProps,
-  ElementConstructor,
-  EngineInterface,
-  Register,
-  RenderElement,
-  SelectProps,
-  SvgProps,
-  TextProps,
-  UiOpenResult,
-} from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
-import type { ZielGraphChats, ZielGraphFarben, ZielGraphZustand } from '../types'
+import type { ZielGraphLauf } from '../types'
 
-import {
-  alter,
-  fasseZusammen,
-  kurz,
-  liesChats,
-  neueFragen,
-  nimmAuf,
-  nimmHeraus,
-  zaehler,
-} from './chats'
+import { fasseZusammen, kurz, liesChats, nameVon, neueFragen, nimmAuf, nimmHeraus } from './chats'
 import type { ChatZugang } from './chats'
-import { BEISPIEL } from './daten'
-import {
-  ALLE,
-  SVG_GRENZE,
-  ZEICHEN,
-  chatMarke,
-  klappZeichen,
-  sicht,
-  zeichneSvg,
-} from './zeichnen'
-import type { Sicht } from './zeichnen'
+import { MODELL } from './fest'
+import { SPALTEN, zeichneGraphLeiste } from './graph/leiste'
+import type { GraphLage } from './graph/leiste'
+import { registriereAntwort } from './karten/antwort'
+import { zeichneKartenLeiste } from './karten/leiste'
+import type { KartenLage } from './karten/leiste'
+import { wunschZellen } from './karten/zeichnen'
+import { ladePlan, leiteAb } from './plan/lauf'
+import type { Aufruf, LaufZugang } from './plan/lauf'
+import type { Auftrag } from './plan/lesen'
+import type { Taten } from './teile'
+import { mehrzahl, sekunden } from './worte'
+import { GRAPH_START, KARTEN_START, KEINE_CHATS, NICHTS_GELADEN, RUHE } from './zustand'
 
-const PANE = 'ziel-graph'
-const TITEL = 'Ziel-Graph'
-// Jeder Modell-Aufruf läuft mit Sonnet 5.5.
-const MODELL = 'claude-sonnet-5-5'
-// Das Bild ist 420 px breit; das sind etwa so viele Zellen der Code-Schrift.
-const SPALTEN = 58
-// So oft liest jede Session die Stände der anderen neu.
-const TAKT_MS = 20_000
+// Der Zugang des Mods zur Engine: ein Plan, zwei Ansichten. Hier stehen das Laden, der Lauf,
+// der den Plan ableitet, die Handgriffe aller Knöpfe und die zwei Leisten. `validate` folgt
+// `$` nicht über einen Import hinweg: Jede Stelle, an der der Mod die Engine braucht, steht
+// deshalb in dieser Datei. Gezeichnet und gerechnet wird in den Dateien daneben, ohne `$`.
 
-// Der Beispiel-Graph zeichnet feste, erfundene Daten. Wer einen echten Plan hat, ersetzt
-// diese eine Stelle durch abgeleitete Daten derselben Form (ZielGraphDaten).
-const DATEN = BEISPIEL
+// Die schmale Ansicht: die laufenden Chats und der Plan als Graph.
+const GRAPH = 'ziel-graph'
+const GRAPH_TITEL = 'Ziel-Graph'
+// Die breite Ansicht: derselbe Plan als Prozesskarten.
+const KARTEN = 'orchestrator'
+const KARTEN_TITEL = 'Orchestrator'
+// Großzügig: Die Antwort ist ein JSON mit einigen tausend Tokens und kommt am Stück.
+const MAX_TOKENS = 16_000
+const TIMEOUT_MS = 240_000
+const AUFRUF: Aufruf = { modell: MODELL, maxTokens: MAX_TOKENS, timeoutMs: TIMEOUT_MS }
+// So oft zählen die Leisten die Sekunden eines Laufs weiter.
+const LAUF_TAKT_MS = 5_000
+// So oft liest jede Session die Stände der Chats neu.
+const CHAT_TAKT_MS = 20_000
 
-const START: ZielGraphZustand = {
-  beispiel: false,
-  ansicht: 'schritte',
-  ziel: ALLE,
-  bahnenAus: [],
-  personenAus: ['person-2'],
-  offen: ['recherchen'],
-  farben: 'auto',
-}
+// Plan, Chats und Lauf teilen sich beide Ansichten; was der Nutzer einstellt, hat jede für sich.
+const geladen = atom({ plugin: 'ziel-graph', key: 'geladen' } as const, NICHTS_GELADEN)
+const chats = atom({ plugin: 'ziel-graph', key: 'chats' } as const, KEINE_CHATS)
+const uhr = atom({ plugin: 'ziel-graph', key: 'uhr' } as const, 0)
+const lauf = atom({ plugin: 'ziel-graph', key: 'lauf' } as const, RUHE)
+const graph = atom({ plugin: 'ziel-graph', key: 'graph' } as const, GRAPH_START)
+const karten = atom({ plugin: 'ziel-graph', key: 'karten' } as const, KARTEN_START)
 
-const LEER: ZielGraphChats = { ich: '', chats: [], gelesen: 0 }
+let letzterPrompt = ''
+// Die Fragen, die dieses Fenster schon kennt: nur neue lösen einen Toast aus.
+let bekannt: Map<string, string> | null = null
+// Der Takt, in dem die Chats neu gelesen werden; null, solange er nicht läuft.
+let chatTakt: Timer | null = null
+// Ob in diesem Fenster gerade ein Lauf unterwegs ist, und seit wann. Der Zustand `lauf`
+// übersteht ein Neuladen des Mods, der Lauf selbst nicht: deshalb zählt für „läuft schon“
+// nur das hier.
+let unterwegs = false
+let unterwegsSeit = 0
+// Ein Lauf endet spätestens mit der Zeitgrenze des Modell-Aufrufs. Meldet er sich danach
+// immer noch nicht, ist er verloren, und der Knopf darf einen neuen starten.
+const VERLOREN_MS = TIMEOUT_MS + 60_000
 
-const zustand = atom({ plugin: 'ziel-graph', key: 'zustand' } as const, START)
-const chats = atom({ plugin: 'ziel-graph', key: 'chats' } as const, LEER)
-
-const FARBEN: readonly { value: ZielGraphFarben; label: string }[] = [
-  { value: 'auto', label: 'Auto' },
-  { value: 'hell', label: 'Hell' },
-  { value: 'dunkel', label: 'Dunkel' },
-]
-
-const wechsle = (liste: readonly string[], id: string): string[] =>
-  liste.includes(id) ? liste.filter(one => one !== id) : [...liste, id]
-
-const aendere = (
-  $: EngineInterface,
-  fn: (alt: ZielGraphZustand) => ZielGraphZustand,
-): Promise<unknown> => update($, zustand, alt => fn(alt ?? START))
-
-const oeffne = ($: EngineInterface): Promise<UiOpenResult> =>
-  $.ui.open({ id: PANE, title: TITEL, columns: SPALTEN })
-
-// Der Zugang der Chat-Logik zur Engine. `validate` folgt `$` nicht über einen Import
-// hinweg: jede Stelle, an der hooks/chats.ts die Engine braucht, steht deshalb hier.
+// Der Zugang der Chat-Logik und der Quellen zur Engine. `frage` ist hier der kleine Aufruf,
+// der nach einer Antwort den Stand eines Chats fasst.
 const zugang = ($: EngineInterface): ChatZugang => ({
   sitzung: () => $.session.id(),
   heim: async () => (await $.env.get('USERPROFILE')) ?? (await $.env.get('HOME')) ?? '.',
@@ -101,12 +80,21 @@ const zugang = ($: EngineInterface): ChatZugang => ({
   melde: text => $.ui.log(text),
 })
 
-let letzterPrompt = ''
-// Die Fragen, die dieses Fenster schon kennt: nur neue lösen einen Toast aus.
-let bekannt: Map<string, string> | null = null
+// Derselbe Zugang für den Lauf: Nur `frage` ist dort der große Aufruf, der den Plan ableitet.
+const laufZugang = ($: EngineInterface): LaufZugang => ({
+  ...zugang($),
+  frage: (system, prompt) =>
+    $.model.complete({ model: MODELL, system, prompt, maxTokens: MAX_TOKENS, timeoutMs: TIMEOUT_MS }),
+})
 
-// Liest die Chats des Repos neu ein und meldet, wo ein anderer Chat neu auf den Nutzer wartet.
-const lade = async ($: EngineInterface): Promise<void> => {
+// ---------- Laden ----------
+
+// Liest die Stände der laufenden Chats neu und meldet, wo ein anderer Chat neu auf den
+// Nutzer wartet. `nurNeues`: Hat sich nichts geändert, bleiben die Chats im Zustand
+// unberührt, und die breite Ansicht wird nicht neu gezeichnet. So stört der Takt niemanden,
+// der dort gerade in ein Feld tippt. Die Uhr geht trotzdem weiter: Die schmale Ansicht hat
+// kein Feld, und ihre Zeitangaben („vor 3 Min“) sollen nicht stehen bleiben.
+const ladeChats = async ($: EngineInterface, nurNeues = false): Promise<void> => {
   try {
     const neu = await liesChats(zugang($))
     const vorher = bekannt
@@ -114,20 +102,52 @@ const lade = async ($: EngineInterface): Promise<void> => {
     bekannt = new Map(neu.chats.map(one => [one.id, one.frage]))
 
     for (const chat of neueFragen(vorher, neu)) {
-      $.ui.toast(`${chat.name} wartet auf dich: ${kurz(chat.frage, 90)}`, { timeoutMs: 8000 })
+      $.ui.toast(`${nameVon(chat)} wartet auf dich: ${kurz(chat.frage, 90)}`, { timeoutMs: 8000 })
     }
 
-    await update($, chats, () => neu)
+    const alt = await read($, chats)
+    const istGleich = alt.ich === neu.ich && JSON.stringify(alt.chats) === JSON.stringify(neu.chats)
+
+    if (!nurNeues || !istGleich) {
+      await update($, chats, () => neu)
+    }
+
+    await update($, uhr, () => neu.gelesen)
   } catch (fehler) {
     $.ui.log(`Chats nicht lesbar: ${String(fehler)}`)
   }
 }
 
-// Die zwei Knöpfe der Leiste: diesen Chat von Hand aufnehmen oder herausnehmen.
+// Lädt den letzten gespeicherten Plan des Repos, GOAL.md und die Chats. Kein Modell-Aufruf.
+const lade = async ($: EngineInterface): Promise<void> => {
+  try {
+    const neu = await ladePlan(zugang($))
+
+    await update($, geladen, () => neu)
+  } catch (fehler) {
+    $.ui.log(`Plan nicht lesbar: ${String(fehler)}`)
+  }
+
+  await ladeChats($)
+}
+
+// Jede Session liest die Chats von selbst neu: Nur so meldet sie eine neue Frage.
+const haltChatsFrisch = ($: EngineInterface): void => {
+  chatTakt ??= $.clock.every(CHAT_TAKT_MS, () => void ladeChats($, true))
+}
+
+const ladeVomKnopf = async ($: EngineInterface): Promise<void> => {
+  await lade($)
+  haltChatsFrisch($)
+}
+
+// ---------- Die Chats ----------
+
+// Die zwei Knöpfe der schmalen Ansicht: diesen Chat von Hand aufnehmen oder herausnehmen.
 const nimmChatAuf = async ($: EngineInterface): Promise<void> => {
   try {
     await nimmAuf(zugang($))
-    await lade($)
+    await ladeChats($)
   } catch (fehler) {
     $.ui.log(`Chat nicht aufgenommen: ${String(fehler)}`)
   }
@@ -136,7 +156,7 @@ const nimmChatAuf = async ($: EngineInterface): Promise<void> => {
 const nimmChatHeraus = async ($: EngineInterface): Promise<void> => {
   try {
     await nimmHeraus(zugang($))
-    await lade($)
+    await ladeChats($)
   } catch (fehler) {
     $.ui.log(`Chat nicht herausgenommen: ${String(fehler)}`)
   }
@@ -144,330 +164,211 @@ const nimmChatHeraus = async ($: EngineInterface): Promise<void> => {
 
 const nachAntwort = async ($: EngineInterface, antwort: string): Promise<void> => {
   if (await fasseZusammen(zugang($), antwort, letzterPrompt)) {
-    await lade($)
+    await ladeChats($)
   }
 }
 
-// Die Elemente der Surface. Select und Svg gibt es nicht überall: null heißt Ersatz zeichnen.
-type Teile = {
-  Box: ElementConstructor<BoxProps>
-  Text: ElementConstructor<TextProps>
-  Button: ElementConstructor<ButtonProps>
-  Select: ElementConstructor<SelectProps> | null
-  Svg: ElementConstructor<SvgProps> | null
+// ---------- Der Lauf ----------
+
+const scheitere = async ($: EngineInterface, grund: string): Promise<void> => {
+  await update($, lauf, (alt): ZielGraphLauf => ({ ...alt, phase: 'fehler', grund }))
+  $.ui.toast(`Ableiten fehlgeschlagen: ${grund}`, { timeoutMs: 10_000 })
 }
 
-// Der obere Teil der Leiste, immer da: die echten Chats des Repos.
-const zeichneChats = ($: EngineInterface, teile: Teile, laufend: ZielGraphChats): RenderElement => {
-  const { Box, Text, Button } = teile
-  const istDabei = laufend.chats.some(one => one.id === laufend.ich)
+// Zählt die Sekunden des Laufs weiter, damit die Leisten nicht stehen bleiben.
+const zaehle = async ($: EngineInterface): Promise<void> => {
+  try {
+    const jetzt = await $.clock.now()
 
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Text bold wrap="wrap">
-        {zaehler(laufend.chats)}
-      </Text>
-
-      {laufend.chats.length === 0 && (
-        <Text dimColor wrap="wrap">
-          {'Ein Chat mit eigenem Branch oder Ticket meldet sich nach seiner nächsten Antwort ' +
-            'selbst an. Jeden anderen nimmt der Knopf „Diesen Chat aufnehmen“ auf.'}
-        </Text>
-      )}
-
-      {laufend.chats.map(chat => (
-        <Box flexDirection="column">
-          <Text bold wrap="wrap">
-            {`${chat.frage === '' ? '○' : '●'} ${chat.name === '' ? 'Neuer Chat' : chat.name}`}
-            {chat.id === laufend.ich ? ' (dieser Chat)' : ''}
-          </Text>
-          <Text dimColor wrap="wrap">
-            {alter(laufend.gelesen, chat.zeit)}
-            {chat.branch === '' ? '' : ` · ${chat.branch}`}
-          </Text>
-          <Text wrap="wrap">{chat.stand}</Text>
-          {chat.naechster !== '' && <Text wrap="wrap">{`Weiter: ${chat.naechster}`}</Text>}
-          {chat.frage !== '' && (
-            <Text bold wrap="wrap">
-              {`Wartet auf dich: ${chat.frage}`}
-            </Text>
-          )}
-        </Box>
-      ))}
-
-      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-        <Button key="laden" label="Neu laden" onPress={() => void lade($)} />
-        {istDabei ? (
-          <Button
-            key="heraus"
-            label="Diesen Chat herausnehmen"
-            onPress={() => void nimmChatHeraus($)}
-          />
-        ) : (
-          <Button key="auf" label="Diesen Chat aufnehmen" onPress={() => void nimmChatAuf($)} />
-        )}
-      </Box>
-    </Box>
-  )
+    await update($, lauf, alt =>
+      alt.phase === 'laeuft' ? { ...alt, sekunden: Math.round((jetzt - alt.seit) / 1000) } : alt,
+    )
+  } catch {
+    // Nur die Anzeige: Der Lauf geht weiter.
+  }
 }
 
-// Der Text-Ersatz für den Graphen: eine Liste, Zeile für Zeile. Bündel mit
-// Tickets sind hier selbst der Aufklapp-Knopf.
-const zeichneListe = ($: EngineInterface, teile: Teile, bild: Sicht): RenderElement => {
-  const { Box, Text, Button } = teile
+// Der Lauf selbst. Er läuft außerhalb des Knopfdrucks, der ihn gestartet hat. `seit` ist
+// sein Beginn und zugleich sein Name: Nur der jüngste Lauf darf etwas zeigen. Sein Ergebnis
+// ist der eine Plan: Beide Ansichten zeichnen ihn, aus welcher der Lauf auch kam.
+const fuehreAus = async ($: EngineInterface, seit: number): Promise<void> => {
+  const takt = $.clock.every(LAUF_TAKT_MS, () => void zaehle($))
 
-  return (
-    <Box flexDirection="column">
-      {bild.eintraege.map(eintrag => {
-        if (eintrag.typ === 'zone') {
-          return (
-            <Text bold wrap="truncate-end">
-              {eintrag.titel.toUpperCase()}
-            </Text>
-          )
-        }
+  try {
+    const ausgang = await leiteAb(laufZugang($), AUFRUF, () => unterwegsSeit === seit)
 
-        if (eintrag.typ === 'ticket') {
-          return (
-            <Text dimColor wrap="truncate-end">
-              {`      ${eintrag.text}`}
-            </Text>
-          )
-        }
+    takt.cancel()
 
-        const { zeile } = eintrag
-        const bahn = eintrag.bahn === null ? '' : `${eintrag.bahn.name} · `
-        const kopf = `${ZEICHEN[zeile.art]} ${zeile.titel}${chatMarke(zeile)}`
-        const istLeise = zeile.art === 'erledigt' || zeile.art === 'blockiert'
+    if (unterwegsSeit !== seit) {
+      // Der Lauf galt als verloren, und ein neuerer ist unterwegs: Dessen Ergebnis zählt.
+      return
+    }
 
-        return (
-          <Box flexDirection="column">
-            {eintrag.aufklappbar ? (
-              <Button
-                key={`auf-${zeile.id}`}
-                plain
-                label={`${kopf} ${klappZeichen(eintrag.offen)}`}
-                onPress={() =>
-                  void aendere($, alt => ({ ...alt, offen: wechsle(alt.offen, zeile.id) }))
-                }
-              />
-            ) : (
-              <Text bold={!istLeise} dimColor={istLeise} wrap="truncate-end">
-                {kopf}
-              </Text>
-            )}
-            {`${bahn}${zeile.meta}` !== '' && (
-              <Text dimColor wrap="truncate-end">
-                {`  ${bahn}${zeile.meta}`}
-              </Text>
-            )}
-          </Box>
-        )
-      })}
-    </Box>
-  )
+    if (ausgang.ok) {
+      const { plan, warnungen, fakten } = ausgang.geladen
+
+      await update($, geladen, () => ausgang.geladen)
+      // Der neue Plan hat neue Zeilen: Was im Graphen aufgeklappt war, gibt es so nicht mehr.
+      await update($, graph, alt => ({ ...alt, offen: [] }))
+      await update($, lauf, (alt): ZielGraphLauf => ({ ...alt, phase: 'fertig', grund: '' }))
+      await ladeChats($)
+      $.ui.toast(
+        `Ableiten fertig nach ${sekunden(fakten?.dauerMs ?? 0)} s: ` +
+          `${mehrzahl(plan?.buendel.length ?? 0, 'Bündel', 'Bündel')} in ` +
+          mehrzahl(plan?.straenge.length ?? 0, 'Strang', 'Strängen') +
+          (warnungen.length === 0 ? '' : `, ${mehrzahl(warnungen.length, 'Hinweis', 'Hinweise')}`),
+        { timeoutMs: 8000 },
+      )
+    } else {
+      await scheitere(
+        $,
+        ausgang.datei === '' ? ausgang.grund : `${ausgang.grund} Der Lauf liegt in ${ausgang.datei}.`,
+      )
+    }
+  } catch (fehler) {
+    takt.cancel()
+
+    if (unterwegsSeit === seit) {
+      await scheitere($, `Der Lauf ist abgebrochen: ${String(fehler)}`)
+    }
+  } finally {
+    if (unterwegsSeit === seit) {
+      unterwegs = false
+    }
+  }
 }
 
-// Der Beispiel-Graph mit seinen Knöpfen: so sieht die Leiste aus, sobald es einen Plan gibt.
-const zeichneBeispiel = (
-  $: EngineInterface,
-  teile: Teile,
-  stand: ZielGraphZustand,
-): RenderElement => {
-  const { Box, Text, Button, Select, Svg } = teile
-  const bild = sicht(DATEN, stand)
-  const svg = Svg === null ? null : zeichneSvg(DATEN, bild, stand.farben)
-  const passt = svg !== null && svg.source.length <= SVG_GRENZE
-  const ziele = [
-    { value: ALLE, label: 'Alle Ziele' },
-    ...bild.waehlbar.map(one => ({ value: one.id, label: one.name })),
-  ]
-  const naechstesZiel = ziele[(ziele.findIndex(one => one.value === bild.ziel) + 1) % ziele.length]
-  const naechsteFarbe =
-    FARBEN[(FARBEN.findIndex(one => one.value === stand.farben) + 1) % FARBEN.length]
+// Startet einen Lauf, ohne auf ihn zu warten. false: Es ist schon einer unterwegs.
+const starte = async ($: EngineInterface): Promise<boolean> => {
+  const seit = await $.clock.now()
 
-  return (
-    <Box flexDirection="column" gap={1}>
-      <Box flexDirection="column">
-        <Text bold wrap="wrap">
-          {DATEN.endziel}
-        </Text>
-        <Text dimColor wrap="wrap">
-          {bild.zaehler}
-        </Text>
-      </Box>
+  // Von hier bis zum Merken ohne Warten: Zwei Starts zugleich ergeben einen Lauf.
+  if (unterwegs && seit - unterwegsSeit < VERLOREN_MS) {
+    return false
+  }
 
-      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-        {Select === null ? (
-          <Button
-            key="ziel"
-            label={`Ziel: ${ziele.find(one => one.value === bild.ziel)?.label ?? 'Alle Ziele'}`}
-            onPress={() => void aendere($, alt => ({ ...alt, ziel: naechstesZiel?.value ?? ALLE }))}
-          />
-        ) : (
-          <Select
-            key="ziel"
-            label="Ziel"
-            options={ziele}
-            value={bild.ziel}
-            onSelect={wahl => void aendere($, alt => ({ ...alt, ziel: wahl }))}
-          />
-        )}
-        <Button
-          key="ansicht-schritte"
-          label="Schritte"
-          variant={stand.ansicht === 'schritte' ? 'primary' : 'secondary'}
-          onPress={() => void aendere($, alt => ({ ...alt, ansicht: 'schritte' }))}
-        />
-        <Button
-          key="ansicht-uebersicht"
-          label="Übersicht"
-          variant={stand.ansicht === 'uebersicht' ? 'primary' : 'secondary'}
-          onPress={() => void aendere($, alt => ({ ...alt, ansicht: 'uebersicht' }))}
-        />
-      </Box>
+  unterwegs = true
+  unterwegsSeit = seit
 
-      <Box flexDirection="row" flexWrap="wrap" columnGap={1}>
-        {DATEN.personen.map(person => {
-          const istAn = !stand.personenAus.includes(person.id)
+  try {
+    await update($, lauf, (): ZielGraphLauf => ({ phase: 'laeuft', seit, sekunden: 0, grund: '' }))
+    // Nach dem Knopfdruck, nicht darin: Der Modell-Aufruf hält ihn nicht auf.
+    $.clock.after(0, () => void fuehreAus($, seit))
+  } catch (fehler) {
+    unterwegs = false
+    throw fehler
+  }
 
-          return (
-            <Button
-              key={`person-${person.id}`}
-              label={`${istAn ? '✓' : '–'} ${person.name}`}
-              dimColor={!istAn}
-              onPress={() =>
-                void aendere($, alt => ({
-                  ...alt,
-                  personenAus: wechsle(alt.personenAus, person.id),
-                }))
-              }
-            />
-          )
-        })}
-        {bild.ziel === ALLE &&
-          bild.waehlbar.map(bahn => {
-            const istAn = !stand.bahnenAus.includes(bahn.id)
-
-            return (
-              <Button
-                key={`bahn-${bahn.id}`}
-                label={`${istAn ? '✓' : '–'} ${bahn.name}`}
-                dimColor={!istAn}
-                onPress={() =>
-                  void aendere($, alt => ({ ...alt, bahnenAus: wechsle(alt.bahnenAus, bahn.id) }))
-                }
-              />
-            )
-          })}
-      </Box>
-
-      {passt && bild.aufklappbar.length > 0 && (
-        <Box flexDirection="column">
-          <Text dimColor>Bündel auf- und zuklappen</Text>
-          {bild.aufklappbar.map(one => (
-            <Button
-              key={`auf-${one.id}`}
-              plain
-              label={`${klappZeichen(one.offen)} ${one.titel} (${one.anzahl} Tickets)`}
-              onPress={() =>
-                void aendere($, alt => ({ ...alt, offen: wechsle(alt.offen, one.id) }))
-              }
-            />
-          ))}
-        </Box>
-      )}
-
-      {Svg !== null && svg !== null && passt ? (
-        <Svg source={svg.source} alt={svg.alt} />
-      ) : (
-        zeichneListe($, teile, bild)
-      )}
-
-      {bild.ausgeblendet !== '' && (
-        <Text dimColor wrap="wrap">
-          {`▸ Ausgeblendet: ${bild.ausgeblendet}`}
-        </Text>
-      )}
-
-      {Svg !== null && (
-        <Box flexDirection="row">
-          {Select === null ? (
-            <Button
-              key="farben"
-              label={`Farben: ${FARBEN.find(one => one.value === stand.farben)?.label ?? 'Auto'}`}
-              onPress={() =>
-                void aendere($, alt => ({ ...alt, farben: naechsteFarbe?.value ?? 'auto' }))
-              }
-            />
-          ) : (
-            <Select
-              key="farben"
-              label="Farben"
-              options={FARBEN}
-              value={stand.farben}
-              onSelect={wahl =>
-                void aendere($, alt => ({
-                  ...alt,
-                  farben: FARBEN.find(one => one.value === wahl)?.value ?? 'auto',
-                }))
-              }
-            />
-          )}
-        </Box>
-      )}
-    </Box>
-  )
+  return true
 }
 
-// Die ganze Leiste: oben die echten Chats, darunter der Hinweis auf den fehlenden Plan
-// und, nur auf Knopfdruck, der Beispiel-Graph.
-const zeichne = (
-  $: EngineInterface,
-  teile: Teile,
-  stand: ZielGraphZustand,
-  laufend: ZielGraphChats,
-): RenderElement => {
-  const { Box, Text, Button } = teile
-  // Ein Zustand, den noch Schritt 1 geschrieben hat, kennt das Feld nicht.
-  const mitBeispiel = stand.beispiel === true
-
-  return (
-    <Box flexDirection="column" gap={1}>
-      {zeichneChats($, teile, laufend)}
-
-      <Box flexDirection="column">
-        <Text dimColor wrap="wrap">
-          Noch kein Plan: Ohne Zielliste zeigt der Ziel-Graph nur die laufenden Chats.
-        </Text>
-        <Box>
-          <Button
-            key="beispiel"
-            label={mitBeispiel ? 'Beispiel-Graph ausblenden' : 'Beispiel-Graph zeigen'}
-            onPress={() => void aendere($, alt => ({ ...alt, beispiel: alt.beispiel !== true }))}
-          />
-        </Box>
-      </Box>
-
-      {mitBeispiel && (
-        <Text bold wrap="wrap">
-          Erfundene Beispieldaten, kein echter Stand. So sieht der Graph mit einem Plan aus.
-        </Text>
-      )}
-      {mitBeispiel && zeichneBeispiel($, teile, stand)}
-    </Box>
-  )
+const starteVomKnopf = async ($: EngineInterface): Promise<void> => {
+  try {
+    if (!(await starte($))) {
+      $.ui.toast('Ein Lauf ist schon unterwegs.')
+    }
+  } catch (fehler) {
+    $.ui.log(`Ableiten nicht gestartet: ${String(fehler)}`)
+  }
 }
+
+// Ein Lauf, der laut Zustand noch läuft, obwohl in diesem Fenster keiner unterwegs ist:
+// Der Mod wurde mittendrin neu geladen. Die Leisten sollen das sagen, statt ewig zu warten.
+const raeumeAuf = async ($: EngineInterface): Promise<void> => {
+  if (!unterwegs && (await read($, lauf)).phase === 'laeuft') {
+    await update($, lauf, (alt): ZielGraphLauf =>
+      alt.phase === 'laeuft'
+        ? { ...alt, phase: 'fehler', grund: 'Der Lauf wurde unterbrochen: Der Mod ist mittendrin neu geladen worden.' }
+        : alt,
+    )
+  }
+}
+
+// ---------- Knöpfe ----------
+
+const wechsle = (liste: readonly string[], id: string): string[] =>
+  liste.includes(id) ? liste.filter(one => one !== id) : [...liste, id]
+
+// Legt einen Auftrag ins Eingabefeld des Chats. Abschicken tut ihn der Nutzer selbst. Hat er
+// dort schon etwas getippt, bleibt es stehen, und der Auftrag kommt dahinter.
+const lege = async ($: EngineInterface, auftrag: Auftrag): Promise<void> => {
+  const { text, was } = auftrag
+
+  if (text === null) {
+    return
+  }
+
+  try {
+    let entwurf = ''
+
+    try {
+      entwurf = (await $.prompt.read()).text
+    } catch {
+      // Ohne lesbares Eingabefeld gilt es als leer.
+    }
+
+    const haengtAn = entwurf.trim() !== ''
+    const r = await $.prompt.fill({
+      text: haengtAn ? `\n\n${text}` : text,
+      mode: haengtAn ? 'append' : 'replace',
+    })
+    const warum =
+      r.refusal === 'dialog'
+        ? ': Ein Dialog ist offen.'
+        : r.refusal === 'no_composer'
+          ? ': Diese Oberfläche hat kein Eingabefeld.'
+          : '.'
+
+    $.ui.toast(
+      r.isFilled
+        ? `${was} liegt im Eingabefeld${haengtAn ? ', hinter deinem Entwurf' : ''}. Prüfen und abschicken.`
+        : `Das Eingabefeld hat den Text nicht angenommen${warum}`,
+      { timeoutMs: 6000 },
+    )
+  } catch (fehler) {
+    $.ui.log(`Eingabefeld nicht gefüllt: ${String(fehler)}`)
+  }
+}
+
+// Die Handgriffe aller Knöpfe, für beide Leisten. Ableiten, Laden und die Aufträge sind in
+// beiden dieselben; was nur eine Ansicht einstellt, schreibt nur in deren Zustand, und nur
+// sie wird davon neu gezeichnet.
+const tatenVon = ($: EngineInterface): Taten => ({
+  ableiten: () => void starteVomKnopf($),
+  laden: () => void ladeVomKnopf($),
+  lege: auftrag => void lege($, auftrag),
+  aufnehmen: () => void nimmChatAuf($),
+  herausnehmen: () => void nimmChatHeraus($),
+  zeige: ansicht => void update($, graph, alt => ({ ...alt, ansicht })),
+  klappe: id => void update($, graph, alt => ({ ...alt, offen: wechsle(alt.offen, id) })),
+  // Klappt alle Zeilen auf; sind schon alle offen, klappt es sie zu.
+  klappeAlle: ids =>
+    void update($, graph, alt => ({
+      ...alt,
+      offen: ids.every(one => alt.offen.includes(one)) ? [] : [...ids],
+    })),
+  waehle: id => void update($, karten, alt => ({ ...alt, wahl: id })),
+  faerbe: farben => void update($, karten, alt => ({ ...alt, farben })),
+})
 
 export const register: Register = on => {
+  // Versuch, in sich geschlossen: einen wartenden Chat aus der breiten Ansicht beantworten.
+  // Der Aufruf steht zuerst, damit sein Hook über dem Zeichnen dieser Ansicht liegt.
+  registriereAntwort(on)
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'graph',
-      description: 'Den Ziel-Graphen als Seitenleiste öffnen',
+      description: 'Den Ziel-Graphen als Seitenleiste öffnen: die laufenden Chats und der Plan des Repos',
     })
-
+    await $.command.register({
+      name: 'orchestrator',
+      description: 'Denselben Plan als Prozesskarten breit neben dem Chat öffnen',
+    })
+    await raeumeAuf($)
+    // Eine Leiste, die vom letzten Mal noch offen ist, soll nicht leer dastehen.
     await lade($)
-    $.clock.every(TAKT_MS, () => void lade($))
+    haltChatsFrisch($)
 
     return next(e)
   })
@@ -491,34 +392,89 @@ export const register: Register = on => {
 
   on('command.run', { command: 'graph' }, async $ => {
     await lade($)
-    const offen = await oeffne($)
+    haltChatsFrisch($)
+
+    const offen = await $.ui.open({ id: GRAPH, title: GRAPH_TITEL, columns: SPALTEN })
     const flaechen = (await $.session.surfaces()).join(', ') || 'keine'
     // Sagt, ob die Leiste wirklich gezeichnet wird: auf einem verbundenen Gerät ohne Platz
     // dafür wartet sie nur.
     const lage = offen.isPlaced ? 'geöffnet.' : `wartet und wird nicht gezeichnet: ${offen.reason}`
 
-    return { text: `Ziel-Graph ${lage} (Oberflächen: ${flaechen})` }
+    return { text: `${GRAPH_TITEL} ${lage} (Oberflächen: ${flaechen})` }
   })
 
-  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const stand = await read($, zustand)
+  on('command.run', { command: 'orchestrator' }, async $ => {
+    await lade($)
+    haltChatsFrisch($)
+
+    const { plan } = await read($, geladen)
+    const offen = await $.ui.open({
+      id: KARTEN,
+      title: KARTEN_TITEL,
+      columns: wunschZellen(plan?.straenge.length ?? 0),
+    })
+    // Sagt, ob die Leiste wirklich gezeichnet wird: auf einem verbundenen Gerät ohne Platz
+    // dafür wartet sie nur.
+    const lage = offen.isPlaced
+      ? 'geöffnet.'
+      : `wartet und wird nicht gezeichnet: ${offen.reason.replace(/\.$/, '')}.`
+    const inhalt =
+      plan === null
+        ? 'Noch kein Plan für dieses Repo: „Neu ableiten“ in der Leiste leitet ihn ab.'
+        : `Letzter Plan geladen: ${mehrzahl(plan.buendel.length, 'Bündel', 'Bündel')} in ` +
+          `${mehrzahl(plan.straenge.length, 'Strang', 'Strängen')}.`
+
+    return { text: `${KARTEN_TITEL} ${lage} ${inhalt}` }
+  })
+
+  // Die schmale Ansicht. Sie liest Plan, Chats und Lauf und dazu nur ihre eigene Einstellung
+  // und die Uhr: Ihre Zeitangaben zählen ab dem letzten Lesen, nicht ab der letzten Änderung.
+  on('ui.render', { component: 'Pane', requestId: GRAPH }, async ($, e) => {
     const laufend = await read($, chats)
+    const lage: GraphLage = {
+      laufend: { ...laufend, gelesen: Math.max(laufend.gelesen, await read($, uhr)) },
+      stand: await read($, geladen),
+      jetzt: await read($, lauf),
+      wahl: await read($, graph),
+    }
+
+    // Das Terminal hat kein Svg: Dort steht der Graph als Liste.
+    if (e.surface === 'terminal') {
+      const { Box, Text, Button } = $.ui.resolve(e)
+
+      return zeichneGraphLeiste({ Box, Text, Button, Select: null, Svg: null }, lage, tatenVon($))
+    }
+
+    const { Box, Text, Button, Svg } = $.ui.resolve(e)
+
+    return zeichneGraphLeiste({ Box, Text, Button, Select: null, Svg }, lage, tatenVon($))
+  })
+
+  // Die breite Ansicht. Sie liest denselben Plan, dieselben Chats und denselben Lauf.
+  on('ui.render', { component: 'Pane', requestId: KARTEN }, async ($, e) => {
+    const lage: KartenLage = {
+      stand: await read($, geladen),
+      laufend: await read($, chats),
+      jetzt: await read($, lauf),
+      wahl: await read($, karten),
+      zellen: e.props.bodyColumns,
+    }
 
     // Das Terminal hat kein Svg, die mobile App kein Select: dort zeichnet der Ersatz.
     if (e.surface === 'terminal') {
       const { Box, Text, Button, Select } = $.ui.resolve(e)
 
-      return zeichne($, { Box, Text, Button, Select, Svg: null }, stand, laufend)
+      return zeichneKartenLeiste({ Box, Text, Button, Select, Svg: null }, lage, tatenVon($))
     }
 
     if (e.surface === 'mobile') {
       const { Box, Text, Button, Svg } = $.ui.resolve(e)
 
-      return zeichne($, { Box, Text, Button, Select: null, Svg }, stand, laufend)
+      return zeichneKartenLeiste({ Box, Text, Button, Select: null, Svg }, lage, tatenVon($))
     }
 
     const { Box, Text, Button, Select, Svg } = $.ui.resolve(e)
 
-    return zeichne($, { Box, Text, Button, Select, Svg }, stand, laufend)
+    return zeichneKartenLeiste({ Box, Text, Button, Select, Svg }, lage, tatenVon($))
   })
 }

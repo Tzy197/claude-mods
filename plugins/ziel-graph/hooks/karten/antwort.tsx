@@ -1,13 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, On, RenderElement, SessionSendResult } from 'claude-code'
 
-import type { OrchestratorAntwort } from '../types'
+import type { ZielGraphAntwort } from '../../types'
+
+import { nameVon } from '../chats'
+import { KARTEN_START, KEINE_CHATS, LEERER_PLAN, NICHTS_GELADEN, NIE_GESENDET } from '../zustand'
 
 import { detail, sicht } from './karten'
 import type { DetailChat } from './karten'
-import { KEINE_CHATS, LEERER_PLAN, NICHTS_GELADEN, NIE_GESENDET, START } from './zustand'
+import { PLATZ } from './leiste'
 
-// VERSUCH: einen wartenden Chat von der Fläche aus beantworten.
+// VERSUCH: einen wartenden Chat von der breiten Ansicht aus beantworten.
 //
 // Diese Datei steht für sich. Sie hängt sich mit zwei eigenen Hooks ein: Der eine setzt in
 // die Detail-Fläche einer Karte, deren Chat wartet, ein Eingabefeld und schickt die Antwort
@@ -16,20 +19,19 @@ import { KEINE_CHATS, LEERER_PLAN, NICHTS_GELADEN, NIE_GESENDET, START } from '.
 // Nichts sonst im Mod hängt an ihr: Wer den Versuch entfernt, löscht diese Datei und in
 // register.tsx den Import und den einen Aufruf `registriereAntwort(on)`.
 
-// Die Leiste des Mods, wie in register.tsx. Hier noch einmal, weil `validate` den Namen im
-// Matcher nur in dieser Datei liest.
+// Die Leiste der breiten Ansicht, wie in register.tsx. Hier noch einmal, weil `validate` den
+// Namen im Matcher nur in dieser Datei liest.
 const PANE = 'orchestrator'
-// Der Name, unter dem die Engine das `$.session.send` dieses Mods beim Empfänger ausweist.
-const MOD = 'orchestrator'
-// Der Platz in der Detail-Fläche, den register.tsx für Zusätze frei lässt.
-const PLATZ = 'detail-zusatz'
+// Der Name, unter dem die Engine das `$.session.send` dieses Mods beim Empfänger ausweist:
+// der Name des Plugins, seit beide Ansichten in einem Mod stecken also `ziel-graph`.
+export const MOD = 'ziel-graph'
 const MAX_ANTWORT = 4000
 
-// Der Zustand der Fläche wird hier nur gelesen; geschrieben wird allein der eigene Versand.
-const geladen = atom({ plugin: 'orchestrator', key: 'geladen' } as const, NICHTS_GELADEN)
-const chats = atom({ plugin: 'orchestrator', key: 'chats' } as const, KEINE_CHATS)
-const ansicht = atom({ plugin: 'orchestrator', key: 'sicht' } as const, START)
-const antwort = atom({ plugin: 'orchestrator', key: 'antwort' } as const, NIE_GESENDET)
+// Der Zustand der Ansicht wird hier nur gelesen; geschrieben wird allein der eigene Versand.
+const geladen = atom({ plugin: 'ziel-graph', key: 'geladen' } as const, NICHTS_GELADEN)
+const chats = atom({ plugin: 'ziel-graph', key: 'chats' } as const, KEINE_CHATS)
+const ansicht = atom({ plugin: 'ziel-graph', key: 'karten' } as const, KARTEN_START)
+const antwort = atom({ plugin: 'ziel-graph', key: 'antwort' } as const, NIE_GESENDET)
 
 // ---------- Die Marke ----------
 
@@ -123,7 +125,7 @@ const sende = async ($: EngineInterface, chat: DetailChat, text: string): Promis
     ergebnis = { isDelivered: false, reason: String(fehler) }
   }
 
-  const stand: OrchestratorAntwort = {
+  const stand: ZielGraphAntwort = {
     chat: chat.id,
     phase: ergebnis.isDelivered ? 'zugestellt' : 'nicht',
     grund: ergebnis.isDelivered ? '' : ergebnis.reason,
@@ -137,8 +139,8 @@ const sende = async ($: EngineInterface, chat: DetailChat, text: string): Promis
   await update($, antwort, () => stand)
   $.ui.toast(
     ergebnis.isDelivered
-      ? `Antwort an „${chat.name}“ zugestellt.`
-      : `Antwort an „${chat.name}“ nicht zugestellt: ${ergebnis.reason}`,
+      ? `Antwort an „${nameVon(chat)}“ zugestellt.`
+      : `Antwort an „${nameVon(chat)}“ nicht zugestellt: ${ergebnis.reason}`,
     { timeoutMs: 8000 },
   )
 }
@@ -179,7 +181,7 @@ const setzeEin = (baum: RenderElement, platz: string, zusatz: RenderElement): Re
   return null
 }
 
-const standZeile = (stand: OrchestratorAntwort, chat: DetailChat): string =>
+const standZeile = (stand: ZielGraphAntwort, chat: DetailChat): string =>
   stand.chat !== chat.id || stand.phase === 'nie'
     ? ''
     : stand.phase === 'zugestellt'
@@ -215,10 +217,10 @@ export const registriereAntwort = (on: On): void => {
     // Nach dem Empfang, nicht darin: Der Prompt startet eine eigene Runde.
     $.clock.after(0, () => void reiche($, paket))
 
-    return { consumed: 'orchestrator: als Antwort aus dem Orchestrator übernommen' }
+    return { consumed: `${MOD}: als Antwort aus dem Orchestrator übernommen` }
   })
 
-  // Liegt über dem Zeichnen der Leiste in register.tsx: Dessen Baum kommt von `next`.
+  // Liegt über dem Zeichnen der breiten Ansicht in register.tsx: Dessen Baum kommt von `next`.
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e, next) => {
     const baum = await next(e)
     const laufend = await read($, chats)
@@ -233,8 +235,8 @@ export const registriereAntwort = (on: On): void => {
 
     const kopf = 'Versuch: von hier antworten'
     const hinweis =
-      `Die Antwort geht an den Chat „${chat.name}“. Er übernimmt sie als deine Antwort, ` +
-      'wenn der Orchestrator auch dort geladen ist. Du bleibst hier.'
+      `Die Antwort geht an den Chat „${nameVon(chat)}“. Er übernimmt sie als deine Antwort, ` +
+      'wenn der Mod Ziel-Graph auch dort geladen ist. Du bleibst hier.'
 
     // Die Handy-App zeichnet kein Eingabefeld.
     if (e.surface === 'mobile') {

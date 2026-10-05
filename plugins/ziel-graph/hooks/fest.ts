@@ -1,10 +1,16 @@
-// Feste Werte des Mods: Kennungen, die im Plan etwas bedeuten, und die Farben der Stränge.
+// Feste Werte des Mods: das Modell, Kennungen, die im Plan etwas bedeuten, und die Farben
+// der Stränge.
 
-// Die Kennung des Endziels als Karte. Kein Bündel und kein Stamm-Schritt darf so heißen.
+// Jeder Modell-Aufruf läuft mit Sonnet 5.5: das Ableiten des Plans und der Stand eines Chats.
+export const MODELL = 'claude-sonnet-5-5'
+
+// Die Kennung des Endziels als Zeile und als Karte. Kein Bündel und kein Stamm-Schritt darf
+// so heißen.
 export const ENDZIEL = 'endziel'
 
-// Die Farben der Stränge, je eine für das helle und das dunkle Schema: dieselben wie im
-// Ziel-Graphen. Das Modell wählt keine Farben, die Reihenfolge der Stränge tut es.
+// Die Farben der Stränge, je eine für das helle und das dunkle Schema. Das Modell wählt
+// keine Farben, die Reihenfolge der Stränge tut es: So hat ein Strang in beiden Ansichten
+// dieselbe Farbe.
 export const STRANG_FARBEN: readonly { hell: string; dunkel: string }[] = [
   { hell: '#0b7285', dunkel: '#5cc4d6' },
   { hell: '#2f9e44', dunkel: '#7fd992' },

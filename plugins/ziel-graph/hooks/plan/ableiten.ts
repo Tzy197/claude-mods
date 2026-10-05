@@ -1,21 +1,22 @@
 import type {
-  OrchestratorBuendel,
-  OrchestratorEndziel,
-  OrchestratorPlan,
-  OrchestratorSchritt,
-  OrchestratorStand,
-  OrchestratorStrang,
-  OrchestratorZone,
-} from '../types'
+  ZielGraphBuendel,
+  ZielGraphEndziel,
+  ZielGraphPlan,
+  ZielGraphSchritt,
+  ZielGraphStand,
+  ZielGraphStrang,
+  ZielGraphZone,
+} from '../../types'
 
-import { ENDZIEL, farbeVon, STRANG_FARBEN } from './daten'
+import { ENDZIEL, farbeVon, STRANG_FARBEN } from '../fest'
+import { eindeutig, kennung, mehrzahl, sauber, text, wort } from '../worte'
+
 import type { Goal } from './goal'
 import { GOAL_DATEI } from './quellen'
 import type { QuellChat, Quellen } from './quellen'
-import { eindeutig, kennung, mehrzahl, sauber, text, wort } from './worte'
 
 // Das Ableiten ohne Engine: der Auftrag ans Modell, die Eingabe aus den Quellen und das
-// Aufräumen der Antwort zu einem Plan, den die Fläche ohne Fehler zeichnet. Kein `$`.
+// Aufräumen der Antwort zu dem einen Plan, den beide Ansichten ohne Fehler zeichnen. Kein `$`.
 
 // ---------- Der Auftrag ----------
 
@@ -247,8 +248,8 @@ export const leseJson = (antwort: string): Record<string, unknown> | null => {
 
 // ---------- Aufräumen ----------
 
-// Die Grenzen, die die Fläche klein genug halten. Stränge aus GOAL.md fallen nie weg; nur
-// weitere, die das Modell findet, sind gedeckelt.
+// Die Grenzen, die Graph und Karten klein genug halten. Stränge aus GOAL.md fallen nie weg;
+// nur weitere, die das Modell findet, sind gedeckelt.
 export const MAX_STRAENGE = STRANG_FARBEN.length
 export const MAX_BUENDEL = 40
 export const MAX_STAMM = 6
@@ -260,14 +261,14 @@ const MAX_NAME = 24
 const MAX_ZIEL = 120
 const MAX_ENDZIEL = 80
 
-const ZONEN = new Map<string, OrchestratorZone>([
+const ZONEN = new Map<string, ZielGraphZone>([
   ['hinter', 'hinter'],
   ['jetzt', 'jetzt'],
   ['spaeter', 'spaeter'],
 ])
 
 // 'laeuft' ergibt sich aus den Chats; nennt das Modell es doch, ist das Bündel möglich.
-const STAENDE = new Map<string, OrchestratorStand>([
+const STAENDE = new Map<string, ZielGraphStand>([
   ['erledigt', 'erledigt'],
   ['fertig', 'erledigt'],
   ['bereit', 'bereit'],
@@ -276,7 +277,7 @@ const STAENDE = new Map<string, OrchestratorStand>([
   ['blockiert', 'blockiert'],
 ])
 
-const ZONE_AUS_STAND: Record<OrchestratorStand, OrchestratorZone> = {
+const ZONE_AUS_STAND: Record<ZielGraphStand, ZielGraphZone> = {
   erledigt: 'hinter',
   bereit: 'jetzt',
   teilweise: 'jetzt',
@@ -284,26 +285,26 @@ const ZONE_AUS_STAND: Record<OrchestratorStand, OrchestratorZone> = {
 }
 
 // Der Stand, den eine Zone hat, wenn das Modell keinen brauchbaren nennt.
-const STAND_AUS_ZONE: Record<OrchestratorZone, OrchestratorStand> = {
+const STAND_AUS_ZONE: Record<ZielGraphZone, ZielGraphStand> = {
   hinter: 'erledigt',
   jetzt: 'bereit',
   spaeter: 'blockiert',
 }
 
 // Was eine Zone als Stand zulässt, wenn das Modell etwas anderes nennt.
-const STAND_IN_ZONE: Record<OrchestratorZone, Record<OrchestratorStand, OrchestratorStand>> = {
+const STAND_IN_ZONE: Record<ZielGraphZone, Record<ZielGraphStand, ZielGraphStand>> = {
   hinter: { erledigt: 'erledigt', bereit: 'erledigt', teilweise: 'erledigt', blockiert: 'erledigt' },
   jetzt: { erledigt: 'bereit', bereit: 'bereit', teilweise: 'teilweise', blockiert: 'teilweise' },
   spaeter: { erledigt: 'blockiert', bereit: 'blockiert', teilweise: 'blockiert', blockiert: 'blockiert' },
 }
 
-export const ZONEN_NAME: Record<OrchestratorZone, string> = {
+export const ZONEN_NAME: Record<ZielGraphZone, string> = {
   hinter: 'Hinter uns',
   jetzt: 'Jetzt möglich',
   spaeter: 'Später',
 }
 
-export const ZONEN_FOLGE: readonly OrchestratorZone[] = ['hinter', 'jetzt', 'spaeter']
+export const ZONEN_FOLGE: readonly ZielGraphZone[] = ['hinter', 'jetzt', 'spaeter']
 
 // Verweise des Modells auf einen Strang, ein Bündel oder einen Stamm-Eintrag. Zuerst zählt
 // die id genau so, wie das Modell sie schreibt; erst danach ein ähnlicher Name: die Kennung
@@ -340,18 +341,18 @@ const unbekannt = (wert: unknown): string =>
   sauber(wert, 30) === '' ? 'fehlt' : `„${sauber(wert, 30)}“ ist unbekannt`
 
 // Ein Strang, solange aufgeräumt wird.
-type RohStrang = Omit<OrchestratorStrang, 'farbe'> & {
+type RohStrang = Omit<ZielGraphStrang, 'farbe'> & {
   // true: Das Modell hat den Strang unter "bahnen" genannt
   genannt: boolean
 }
 
 // Ein Bündel oder ein Stamm-Eintrag, solange aufgeräumt wird: Auf beides darf ein Bündel warten.
 type Ziel =
-  | { art: 'buendel'; buendel: OrchestratorBuendel }
-  | { art: 'stamm'; schritt: OrchestratorSchritt }
+  | { art: 'buendel'; buendel: ZielGraphBuendel }
+  | { art: 'stamm'; schritt: ZielGraphSchritt }
 
 export type Ableitung =
-  | { ok: true; plan: OrchestratorPlan; warnungen: string[] }
+  | { ok: true; plan: ZielGraphPlan; warnungen: string[] }
   | { ok: false; grund: string; warnungen: string[] }
 
 // Ein Chat, so viel das Aufräumen von ihm braucht.
@@ -525,12 +526,12 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
   const ids = new Set<string>([ENDZIEL])
   // die id, wie das Modell sie schreibt, auf das Bündel oder den Stamm-Eintrag im Plan
   const zielVon = verzeichnis<Ziel>()
-  const zwischenziele: OrchestratorSchritt[] = []
+  const zwischenziele: ZielGraphSchritt[] = []
   // Die Stränge aus GOAL.md verweisen mit der id von dort auf ihr Zwischenziel.
   const zwischenzielId = new Map<string, string>()
 
   for (const einer of goal.zwischenziele) {
-    const schritt: OrchestratorSchritt = {
+    const schritt: ZielGraphSchritt = {
       id: eindeutig(einer.id, ids),
       art: 'zwischenziel',
       titel: einer.titel,
@@ -548,7 +549,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
 
   // ----- Bündel -----
 
-  const buendel: OrchestratorBuendel[] = []
+  const buendel: ZielGraphBuendel[] = []
   // was das Modell unter "wartetAuf" genannt hat, je Bündel
   const genanntesZiel = new Map<string, string>()
   let zuViele = 0
@@ -631,7 +632,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
       warnungen.push(`Bündel „${titel}“: nur die ersten ${MAX_PUNKTE} von ${punkte.length} Punkten.`)
     }
 
-    const eines: OrchestratorBuendel = {
+    const eines: ZielGraphBuendel = {
       id: gemeinsam.id,
       strang: strang.id,
       zone,
@@ -660,8 +661,8 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
 
   // ----- Stamm: Zwischenziele oder Treffpunkt, dann die Schritte danach -----
 
-  let treffpunkt: OrchestratorSchritt | null = null
-  const schritte: OrchestratorSchritt[] = []
+  let treffpunkt: ZielGraphSchritt | null = null
+  const schritte: ZielGraphSchritt[] = []
 
   for (const eine of liste(roh.stamm)) {
     if (!istObjekt(eine)) {
@@ -700,7 +701,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
     }
 
     const gemeinsam = nimmGemeinsames(eine, titel, 'stamm')
-    const schritt: OrchestratorSchritt = {
+    const schritt: ZielGraphSchritt = {
       id: gemeinsam.id,
       art: istTreffpunkt ? 'treffpunkt' : 'schritt',
       titel,
@@ -735,7 +736,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
     chatVon.set(chat.id, chat)
   }
 
-  const zuordnung = new Map<string, OrchestratorBuendel | null>()
+  const zuordnung = new Map<string, ZielGraphBuendel | null>()
 
   for (const eine of liste(roh.chats)) {
     const genannt = istObjekt(eine) ? text(eine.id).trim() : ''
@@ -831,7 +832,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
   }
 
   const genanntesEndziel = sauber(roh.endziel, MAX_ENDZIEL).replace(/^endziel\s*[:：]\s*/i, '')
-  const endziel: OrchestratorEndziel =
+  const endziel: ZielGraphEndziel =
     goal.endziel !== ''
       ? { text: goal.endziel, herkunft: 'goal' }
       : genanntesEndziel !== ''
@@ -843,7 +844,7 @@ export const normalisiere = (antwort: string, umfeld: Umfeld): Ableitung => {
   }
 
   // Die Bündel stehen Zone für Zone und darin Strang für Strang, in der Reihenfolge des Modells.
-  const platz = (eines: OrchestratorBuendel): number =>
+  const platz = (eines: ZielGraphBuendel): number =>
     ZONEN_FOLGE.indexOf(eines.zone) * (geordnet.length + 1) +
     geordnet.findIndex(one => one.id === eines.strang)
   const sortiert = buendel

@@ -1,34 +1,36 @@
 import type { ModelCompleteResult } from 'claude-code'
 
-import type { OrchestratorFakten, OrchestratorGeladen } from '../types'
+import type { ZielGraphFakten, ZielGraphGeladen } from '../../types'
+
+import { ordnerVon } from '../chats'
+import type { ChatZugang } from '../chats'
 
 import { AUFTRAG, baueEingabe, normalisiere, quellenNamen } from './ableiten'
-import type { UmfeldChat } from './ableiten'
+import type { Ableitung, UmfeldChat } from './ableiten'
 import { istLeer, leseGoal } from './goal'
-import { liesGoal, sammle, schluesselVon } from './quellen'
+import { liesGoal, sammle } from './quellen'
 import type { QuellenZugang } from './quellen'
 
 // Ein Lauf von Anfang bis Ende: Quellen lesen, das Modell einmal fragen, die Antwort
 // aufräumen und alles als JSON ablegen. Dazu das Laden des letzten Plans. Kein `$`:
 // register.tsx reicht einen Zugang.
 
-export type LaufZugang = QuellenZugang & {
-  schreibe: (pfad: string, text: string) => Promise<void>
-  frage: (system: string, prompt: string) => Promise<ModelCompleteResult>
-}
+// `frage` ist hier der große Aufruf, der den Plan ableitet, nicht der kleine für den Stand
+// eines Chats.
+export type LaufZugang = QuellenZugang & Pick<ChatZugang, 'schreibe' | 'frage'>
 
 // Womit das Modell gefragt wird. Steht so in der Datei des Laufs.
 export type Aufruf = { modell: string; maxTokens: number; timeoutMs: number }
 
 export type LaufAusgang =
-  | { ok: true; geladen: OrchestratorGeladen }
+  | { ok: true; geladen: ZielGraphGeladen }
   // datei: wo der gescheiterte Lauf liegt; '' wenn er sich nicht schreiben ließ
   | { ok: false; grund: string; datei: string }
 
 // Was plan.json hält: alles, woraus sich der Plan ohne Modell wieder aufbauen lässt.
-type Gespeichert = {
+export type Gespeichert = {
   version: number
-  fakten: OrchestratorFakten
+  fakten: ZielGraphFakten
   // die Antwort des Modells, roh
   antwort: string
   umfeld: { chats: UmfeldChat[]; quellen: string[] }
@@ -39,12 +41,12 @@ type Gespeichert = {
 }
 
 const VERSION = 1
-const ORDNER = '.claude/orchestrator'
 const PLAN = 'plan.json'
 
-// Der Ordner dieses Repos auf dem Rechner. Alle Worktrees teilen ihn.
-export const ordnerVon = async (zugang: QuellenZugang): Promise<string> =>
-  `${await zugang.heim()}/${ORDNER}/${await schluesselVon(zugang)}`
+// Wo Plan und Läufe dieses Repos liegen: in einem Unterordner des Ordners, in dem direkt
+// die Chat-Stände liegen. So zählt keine Datei eines Laufs als Chat. Alle Worktrees teilen ihn.
+export const planOrdnerVon = async (zugang: QuellenZugang): Promise<string> =>
+  `${await ordnerVon(zugang)}/plan`
 
 // Warum das Modell keinen Text geliefert hat, in einem Satz.
 const grundAus = (r: ModelCompleteResult | null, fehler: string, aufruf: Aufruf): string => {
@@ -68,15 +70,21 @@ const grundAus = (r: ModelCompleteResult | null, fehler: string, aufruf: Aufruf)
 // "2026-10-04T15-40-00-000Z": die Zeit als Teil eines Dateinamens.
 const stempel = (zeit: number): string => new Date(zeit).toISOString().replace(/[:.]/g, '-')
 
-const goalStand = (jetzt: string | null, beimAbleiten: string | null): OrchestratorGeladen['goal'] => ({
+const goalStand = (jetzt: string | null, beimAbleiten: string | null): ZielGraphGeladen['goal'] => ({
   vorhanden: jetzt !== null,
   leer: istLeer(leseGoal(jetzt)),
   geaendert: jetzt !== beimAbleiten,
 })
 
 // Leitet den Plan einmal ab. Der Ausgang sagt, ob es einen Plan gibt; die Datei des Laufs
-// entsteht in beiden Fällen, plan.json nur bei einem gelungenen Lauf.
-export const leiteAb = async (zugang: LaufZugang, aufruf: Aufruf): Promise<LaufAusgang> => {
+// entsteht in beiden Fällen, plan.json nur bei einem gelungenen Lauf. `gilt` sagt am Ende,
+// ob dieser Lauf noch der jüngste ist: Einer, der als verloren galt und sich doch noch
+// meldet, überschreibt den Plan des neueren nicht.
+export const leiteAb = async (
+  zugang: LaufZugang,
+  aufruf: Aufruf,
+  gilt: () => boolean = () => true,
+): Promise<LaufAusgang> => {
   const beginn = await zugang.jetzt()
   const quellen = await sammle(zugang)
   const goal = leseGoal(quellen.goal)
@@ -112,7 +120,7 @@ export const leiteAb = async (zugang: LaufZugang, aufruf: Aufruf): Promise<LaufA
           grund: `${gelesen.grund} Sie endet an der Grenze von ${aufruf.maxTokens} Tokens und ist wohl abgeschnitten.`,
         }
   const ende = await zugang.jetzt()
-  const ordner = `${await zugang.heim()}/${ORDNER}/${quellen.schluessel}`
+  const ordner = await planOrdnerVon(zugang)
   const fakten = {
     zeit: beginn,
     dauerMs: ende - beginn,
@@ -177,6 +185,10 @@ export const leiteAb = async (zugang: LaufZugang, aufruf: Aufruf): Promise<LaufA
     return { ok: false, grund: ableitung.ok ? '' : ableitung.grund, datei }
   }
 
+  if (!gilt()) {
+    return { ok: false, grund: 'Ein neuerer Lauf hat diesen überholt.', datei }
+  }
+
   try {
     const gespeichert: Gespeichert & { plan: unknown; warnungen: string[] } = {
       version: VERSION,
@@ -218,7 +230,7 @@ const zahl = (wert: unknown): number => (typeof wert === 'number' ? wert : 0)
 const wort = (wert: unknown): string => (typeof wert === 'string' ? wert : '')
 
 // plan.json, so weit sie brauchbar ist; null bei einer fremden oder kaputten Datei.
-const leseGespeichert = (roh: string | null): Gespeichert | null => {
+export const leseGespeichert = (roh: string | null): Gespeichert | null => {
   try {
     const wert: unknown = JSON.parse(roh ?? '')
 
@@ -261,16 +273,22 @@ const leseGespeichert = (roh: string | null): Gespeichert | null => {
   }
 }
 
+// Der Plan aus einer gespeicherten Antwort, aufgeräumt gegen den Text von GOAL.md, der
+// jetzt gilt (null: Es gibt keine).
+export const planAus = (gespeichert: Gespeichert, goal: string | null): Ableitung =>
+  normalisiere(gespeichert.antwort, { ...gespeichert.umfeld, goal: leseGoal(goal) })
+
 // Lädt den letzten gespeicherten Plan dieses Repos. GOAL.md wird dabei frisch gelesen und
-// geht vor: Ein Ziel, das seit dem Ableiten in GOAL.md steht, zeigt die Fläche sofort, ohne
-// neuen Modell-Aufruf. Ohne gespeicherten Plan sagt das Ergebnis nur, wie GOAL.md dasteht.
-export const ladePlan = async (zugang: QuellenZugang): Promise<OrchestratorGeladen> => {
+// geht vor: Ein Ziel, das seit dem Ableiten in GOAL.md steht, zeigen beide Ansichten sofort,
+// ohne neuen Modell-Aufruf. Ohne gespeicherten Plan sagt das Ergebnis nur, wie GOAL.md dasteht.
+export const ladePlan = async (zugang: QuellenZugang): Promise<ZielGraphGeladen> => {
   const gelesen = await zugang.jetzt()
   const jetzt = await liesGoal(zugang)
+  const datei = `${await planOrdnerVon(zugang)}/${PLAN}`
   let roh: string | null = null
 
   try {
-    roh = await zugang.lies(`${await ordnerVon(zugang)}/${PLAN}`)
+    roh = await zugang.lies(datei)
   } catch {
     // Noch nie abgeleitet.
   }
@@ -287,14 +305,15 @@ export const ladePlan = async (zugang: QuellenZugang): Promise<OrchestratorGelad
     }
   }
 
-  const ableitung = normalisiere(gespeichert.antwort, { ...gespeichert.umfeld, goal: leseGoal(jetzt) })
+  const ableitung = planAus(gespeichert, jetzt)
 
   return {
     plan: ableitung.ok ? ableitung.plan : null,
     warnungen: ableitung.ok
       ? [...ableitung.warnungen, ...gespeichert.hinweise]
       : [`Der gespeicherte Plan ist nicht lesbar: ${ableitung.grund}`, ...ableitung.warnungen],
-    fakten: gespeichert.fakten,
+    // Wo der Plan liegt, sagt der Ort, von dem er gelesen wurde, nicht die Datei selbst.
+    fakten: { ...gespeichert.fakten, datei },
     goal: goalStand(jetzt, gespeichert.goal),
     gelesen,
   }

@@ -47,3 +47,6 @@ export const eindeutig = (wunsch: string, vergeben: Set<string>): string => {
 
 export const mehrzahl = (anzahl: number, eins: string, viele: string): string =>
   `${anzahl} ${anzahl === 1 ? eins : viele}`
+
+// Eine Dauer in ganzen Sekunden, nie weniger als eine.
+export const sekunden = (ms: number): number => Math.max(1, Math.round(ms / 1000))

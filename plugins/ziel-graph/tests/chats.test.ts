@@ -2,10 +2,11 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 import type { FsEntry, On, RenderSurface, UiOpenResult } from 'claude-code'
 
-import type { ZielGraphChat, ZielGraphDaten, ZielGraphZeile, ZielGraphZustand } from '../types'
+import type { ZielGraphChat } from '../types'
 
 import {
   istTicketDatei,
+  nameVon,
   schluessel,
   ticketAus,
   ticketImPrompt,
@@ -13,22 +14,21 @@ import {
   trackerAus,
   zaehler,
 } from '../hooks/chats'
-import { BEISPIEL } from '../hooks/daten'
-import { ALLE, sicht, zeichneSvg } from '../hooks/zeichnen'
 
-// Die Pane wird durch den Mod auf einer benannten Surface gezeichnet. Ein Baum,
-// den die Surface nicht zeichnen kann, lässt schon `mount` scheitern.
+// Die laufenden Chats: der obere Teil der schmalen Ansicht `/graph`, die Selbst-Anmeldung
+// und der Stand nach einer Antwort. Die Pane wird durch den Mod auf einer benannten Surface
+// gezeichnet. Ein Baum, den die Surface nicht zeichnen kann, lässt schon `mount` scheitern.
 
 const PLUGIN = 'ziel-graph'
 const PANE = {
   title: 'Ziel-Graph',
   isFocused: false,
-  bodyColumns: 58,
+  bodyColumns: 66,
   placement: 'dock',
   scroll: { offset: 0, bodyRows: 40 },
   view: {},
 } as const
-const VIEWPORT = { columns: 58, rows: 40, isFullscreen: true }
+const VIEWPORT = { columns: 66, rows: 40, isFullscreen: true }
 const ZIEL = { plugin: PLUGIN, component: 'Pane', requestId: PLUGIN, props: PANE, viewport: VIEWPORT } as const
 
 type Gefunden = { type: string; text: string; props: Record<string, unknown> }
@@ -36,8 +36,8 @@ type Zeichnung = {
   findAll: (query: { type?: string; key?: string; text?: string | RegExp }) => Promise<Gefunden[]>
 }
 
-// Alles, was die Zeichnung zeigt, als ein Text: auf dem Desktop steckt der Graph
-// im SVG, im Terminal in Text-Zeilen und Knopf-Beschriftungen.
+// Alles, was die Zeichnung zeigt, als ein Text: Text-Zeilen, Knopf-Beschriftungen und,
+// wo es einen Graphen gibt, sein Bild.
 const inhalt = async (ui: Zeichnung): Promise<string> => {
   const svg = await ui.findAll({ type: 'Svg' })
   const texte = await ui.findAll({ type: 'Text' })
@@ -264,7 +264,7 @@ const gespeichert = (welt: Welt, pfad: string): unknown => JSON.parse(welt.datei
 // ---------- Die Chats ----------
 
 for (const surface of ['desktop', 'terminal', 'vscode', 'mobile'] as const) {
-  test(`${surface}: ohne Plan stehen oben die Chats, der Beispiel-Graph kommt erst per Knopf`, async $ => {
+  test(`${surface}: ohne Plan stehen oben die Chats, darunter ein Satz und der Knopf zum Ableiten`, async $ => {
     const ui = await $.ui.mount({ ...ZIEL, surface })
 
     expect(await ui.drawn()).toMatchObject({ type: 'Box' })
@@ -276,25 +276,16 @@ for (const surface of ['desktop', 'terminal', 'vscode', 'mobile'] as const) {
     expect(ohne).toContain('Diesen Chat aufnehmen')
     expect(await ui.findAll({ key: 'auf' })).toHaveLength(1)
     expect(await ui.findAll({ key: 'heraus' })).toHaveLength(0)
-    expect(ohne).toContain('Noch kein Plan')
-    expect(ohne).toContain('Beispiel-Graph zeigen')
-    expect(ohne).not.toContain('Endziel: der Shop im Betrieb')
-    expect(ohne).not.toContain('Erfundene Beispieldaten')
-    expect(await ui.findAll({ type: 'Svg' })).toHaveLength(0)
     expect(await ui.findAll({ key: 'laden' })).toHaveLength(1)
+    expect(ohne).toContain('Noch kein Plan für dieses Repo: „Neu ableiten“ leitet ihn aus GOAL.md, Doku, Chats und Commits ab.')
+    expect(await ui.findAll({ key: 'neu' })).toHaveLength(1)
+    // Den Beispiel-Graphen mit erfundenen Daten gibt es nicht mehr, und ohne Plan kein Bild.
+    expect(ohne).not.toContain('Beispiel')
+    expect(await ui.findAll({ key: 'beispiel' })).toHaveLength(0)
+    expect(await ui.findAll({ type: 'Svg' })).toHaveLength(0)
     expect(await ui.findAll({ key: 'ansicht-schritte' })).toHaveLength(0)
-
-    await ui.press({ key: 'beispiel' })
-
-    const mit = await inhalt(ui)
-
-    expect(mit).toContain('0 Chats, keiner wartet auf dich')
-    expect(mit).toContain('Erfundene Beispieldaten, kein echter Stand.')
-    expect(mit).toContain('Endziel: der Shop im Betrieb')
-    expect(mit).toContain('Beispiel-Graph ausblenden')
-
-    await ui.press({ key: 'beispiel' })
-    expect(await inhalt(ui)).not.toContain('Endziel: der Shop im Betrieb')
+    // Die Knöpfe der Leiste, von oben nach unten.
+    expect((await ui.findAll({ type: 'Button' })).map(one => one.props.key)).toEqual(['laden', 'auf', 'neu'])
 
     await ui.unmount()
   })
@@ -823,227 +814,8 @@ test('die Kopfzeile zählt Chats und Wartende', () => {
   expect(zaehler([chat('')])).toBe('1 Chat, keiner wartet auf dich')
   expect(zaehler([chat('Ja?'), chat(''), chat('')])).toBe('3 Chats, 1 wartet auf dich')
   expect(zaehler([chat('Ja?'), chat('Nein?')])).toBe('2 Chats, 2 warten auf dich')
-})
 
-test('„wartet auf“ ist nur zwischen zwei Bahnen eine Linie, auch zu einem Ziel weiter oben', () => {
-  const zustand: ZielGraphZustand = {
-    beispiel: true,
-    ansicht: 'schritte',
-    ziel: ALLE,
-    bahnenAus: [],
-    personenAus: [],
-    offen: [],
-    farben: 'hell',
-  }
-  const linien = (daten: ZielGraphDaten): string[] =>
-    [
-      ...zeichneSvg(daten, sicht(daten, zustand), 'hell').source.matchAll(
-        /<path d="([^"]+)"[^>]*stroke-dasharray="5 4"/g,
-      ),
-    ].map(one => one[1] ?? '')
-  const ohneWarten = ({ wartetAuf: _, ...rest }: ZielGraphZeile): ZielGraphZeile => rest
-  // Nur die genannte Zeile wartet, und zwar auf das genannte Ziel.
-  const nur = (id: string, ziel: string): ZielGraphDaten => ({
-    ...BEISPIEL,
-    schritte: BEISPIEL.schritte.map(one => (one.id === id ? { ...one, wartetAuf: ziel } : ohneWarten(one))),
-  })
-  const zahlen = (weg: string): number[] => (weg.match(/-?\d+(\.\d+)?/g) ?? []).map(Number)
-
-  // Das Beispiel: Die Build-Skripte (Werkzeug) warten auf den Lasttest auf dem Stamm, weiter unten.
-  const [nachUnten] = linien(BEISPIEL)
-
-  expect(linien(BEISPIEL)).toHaveLength(1)
-  expect(zahlen(nachUnten ?? '').at(-1)).toBeGreaterThan(zahlen(nachUnten ?? '')[1] ?? 0)
-
-  // In derselben Bahn sagt es die Reihenfolge: keine Linie, ob das Ziel oben oder unten liegt.
-  expect(linien(nur('kasse-rechnungen', 'warenkorb'))).toHaveLength(0)
-  expect(linien(nur('warenkorb', 'kasse-rechnungen'))).toHaveLength(0)
-
-  // In einer anderen Bahn und weiter oben: eine Linie, die nach oben läuft.
-  const [nachOben] = linien(nur('kasse-rechnungen', 'katalog-texte'))
-
-  expect(linien(nur('kasse-rechnungen', 'katalog-texte'))).toHaveLength(1)
-  expect(nachOben).not.toContain('NaN')
-  expect(zahlen(nachOben ?? '').at(-1)).toBeLessThan(zahlen(nachOben ?? '')[1] ?? 0)
-})
-
-// ---------- Der Beispiel-Graph ----------
-
-// Er steht erst nach dem Knopf „Beispiel-Graph zeigen“ in der Leiste.
-const zeigeBeispiel = (ui: { press: (target: { key: string }) => Promise<unknown> }): Promise<unknown> =>
-  ui.press({ key: 'beispiel' })
-
-for (const surface of ['desktop', 'terminal'] as const) {
-  test(`${surface}: die Pane zeichnet den Graphen der Schritte`, async $ => {
-    const ui = await $.ui.mount({ ...ZIEL, surface })
-
-    await zeigeBeispiel(ui)
-    expect(await ui.drawn()).toMatchObject({ type: 'Box' })
-
-    const svg = await ui.findAll({ type: 'Svg' })
-    expect(svg).toHaveLength(surface === 'desktop' ? 1 : 0)
-
-    if (surface === 'desktop') {
-      const source = String(svg[0]?.props.source)
-
-      expect(source.startsWith('<svg ')).toBe(true)
-      expect(source.endsWith('</svg>')).toBe(true)
-      expect(source.length < 131072).toBe(true)
-      expect(String(svg[0]?.props.alt)).toContain('Ansicht Schritte')
-    }
-
-    const text = await inhalt(ui)
-
-    expect(text).toContain('Endziel: der Shop im Betrieb')
-    expect(text).toContain('7 Bündel jetzt möglich · 3 laufen · 2 warten auf dich')
-    expect(text).toContain('Grundstock: 13 Produktseiten fertig')
-    expect(text).toContain('JETZT MÖGLICH')
-    expect(text).toContain('Treffpunkt: Großer Umbau')
-    expect(text).toContain('#8 · Schuhe: Größen als Variante oder Filter')
-    expect(text).toContain('Ausgeblendet: Import, Tests (Person 2)')
-    expect(text).not.toContain('Import: Umzug in Etappen')
-
-    await ui.unmount()
-  })
-
-  test(`${surface}: der Wechsel der Ansicht zeigt die Übersicht und zurück`, async $ => {
-    const ui = await $.ui.mount({ ...ZIEL, surface })
-
-    await zeigeBeispiel(ui)
-    await ui.press({ key: 'ansicht-uebersicht' })
-
-    const uebersicht = await inhalt(ui)
-
-    expect(uebersicht).toContain('Katalog füllen')
-    expect(uebersicht).toContain('12 offen · 5 bereit · 1 Chat')
-    expect(uebersicht).not.toContain('Grundstock: 13 Produktseiten fertig')
-    expect(uebersicht).not.toContain('JETZT MÖGLICH')
-
-    await ui.press({ key: 'ansicht-schritte' })
-    expect(await inhalt(ui)).toContain('Grundstock: 13 Produktseiten fertig')
-
-    await ui.unmount()
-  })
-
-  test(`${surface}: die Filter blenden Bahnen und Personen aus und ein`, async $ => {
-    const ui = await $.ui.mount({ ...ZIEL, surface })
-
-    await zeigeBeispiel(ui)
-    await ui.press({ key: 'bahn-kat' })
-
-    const ohneKatalog = await inhalt(ui)
-
-    expect(ohneKatalog).not.toContain('Katalog-Texte abnehmen')
-    expect(ohneKatalog).toContain('Entwurf Warenkorb-Regeln')
-    expect(ohneKatalog).toContain('Ausgeblendet: Katalog · Import, Tests (Person 2)')
-    expect(ohneKatalog).toContain('5 Bündel jetzt möglich · 2 laufen · 1 warten auf dich')
-
-    await ui.press({ key: 'bahn-kat' })
-    await ui.press({ key: 'person-person-2' })
-
-    const mitPerson2 = await inhalt(ui)
-
-    expect(mitPerson2).toContain('Katalog-Texte abnehmen')
-    expect(mitPerson2).toContain('Import: Umzug in Etappen')
-    expect(mitPerson2).not.toContain('Ausgeblendet')
-
-    await ui.press({ key: 'person-ich' })
-
-    const nurPerson2 = await inhalt(ui)
-
-    expect(nurPerson2).not.toContain('Katalog-Texte abnehmen')
-    expect(nurPerson2).toContain('Tests: Testdaten bremsen den Lauf')
-    expect(nurPerson2).toContain('(Ich)')
-
-    await ui.unmount()
-  })
-
-  test(`${surface}: ein Bündel klappt zu und wieder auf`, async $ => {
-    const ui = await $.ui.mount({ ...ZIEL, surface })
-
-    await zeigeBeispiel(ui)
-    expect(await inhalt(ui)).toContain('#9 · Jacken: Farbgruppen')
-    expect(await inhalt(ui)).not.toContain('#26 · Suche: Sortierung')
-
-    await ui.press({ key: 'auf-recherchen' })
-
-    const zu = await inhalt(ui)
-
-    expect(zu).not.toContain('#9 · Jacken: Farbgruppen')
-    expect(zu).toContain('8 Recherchen zu den Kategorien')
-
-    await ui.press({ key: 'auf-suchfelder' })
-    expect(await inhalt(ui)).toContain('#26 · Suche: Sortierung')
-
-    await ui.press({ key: 'auf-recherchen' })
-    expect(await inhalt(ui)).toContain('#9 · Jacken: Farbgruppen')
-
-    await ui.unmount()
-  })
-
-  test(`${surface}: die Ziel-Auswahl zeigt eine einzelne Bahn`, async $ => {
-    const ui = await $.ui.mount({ ...ZIEL, surface })
-
-    await zeigeBeispiel(ui)
-    await ui.select({ key: 'ziel', value: 'kas' })
-
-    const nurKasse = await inhalt(ui)
-
-    expect(nurKasse).toContain('Entwurf Warenkorb-Regeln')
-    expect(nurKasse).not.toContain('Katalog-Texte abnehmen')
-    expect(nurKasse).not.toContain('Ladezeit')
-    expect(nurKasse).toContain('Treffpunkt: Großer Umbau')
-    expect(await ui.findAll({ key: 'bahn-kat' })).toHaveLength(0)
-
-    // Eine leere Zone bekommt keine Überschrift, „Jetzt möglich“ bleibt.
-    await ui.select({ key: 'ziel', value: 'btr' })
-
-    const nurBetrieb = await inhalt(ui)
-
-    expect(nurBetrieb).toContain('Ladezeit der Startseite senken')
-    expect(nurBetrieb).toContain('JETZT MÖGLICH')
-    expect(nurBetrieb).not.toContain('HINTER UNS')
-    expect(nurBetrieb).not.toContain('SPÄTER')
-
-    await ui.select({ key: 'ziel', value: 'alle' })
-    expect(await inhalt(ui)).toContain('Katalog-Texte abnehmen')
-    expect(await ui.findAll({ key: 'bahn-kat' })).toHaveLength(1)
-
-    await ui.unmount()
-  })
-}
-
-test('vscode und mobile: der Beispiel-Graph wird ebenfalls gezeichnet', async $ => {
-  for (const surface of ['vscode', 'mobile'] as const) {
-    const ui = await $.ui.mount({ ...ZIEL, surface })
-
-    await zeigeBeispiel(ui)
-    expect(await ui.findAll({ type: 'Svg' })).toHaveLength(1)
-    // Die mobile App hat kein Select: dort ist die Ziel-Auswahl ein Knopf.
-    expect(await ui.findAll({ type: 'Select' })).toHaveLength(surface === 'mobile' ? 0 : 2)
-    await ui.press({ key: 'ansicht-uebersicht' })
-    expect(await inhalt(ui)).toContain('Katalog füllen')
-    await ui.press({ key: 'ansicht-schritte' })
-    await zeigeBeispiel(ui)
-    await ui.unmount()
-  }
-})
-
-test('desktop: die Farbwahl wechselt die Palette des Bildes', async $ => {
-  const ui = await $.ui.mount({ ...ZIEL, surface: 'desktop' })
-  const quelle = async (): Promise<string> =>
-    String((await ui.findAll({ type: 'Svg' }))[0]?.props.source)
-
-  await zeigeBeispiel(ui)
-
-  // Auto: helle Farben als Attribute, dunkle über prefers-color-scheme.
-  expect(await quelle()).toContain('prefers-color-scheme: dark')
-  expect(await quelle()).toContain('fill="#ffffff"')
-
-  await ui.select({ key: 'farben', value: 'dunkel' })
-  expect(await quelle()).not.toContain('prefers-color-scheme')
-  expect(await quelle()).toContain('fill="#18242a"')
-
-  await ui.select({ key: 'farben', value: 'auto' })
-  await ui.unmount()
+  // Solange das Modell ihm keinen Namen gegeben hat, heißt ein Chat überall „Neuer Chat“.
+  expect(nameVon({ name: '' })).toBe('Neuer Chat')
+  expect(nameVon({ name: 'Kasse' })).toBe('Kasse')
 })

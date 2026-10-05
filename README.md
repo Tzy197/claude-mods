@@ -6,8 +6,7 @@ Eigene Mods für Claude Code (Desktop-App und Terminal). Ein Mod ist ein Plugin 
 
 | Mod | Befehle | Was er tut |
 | --- | --- | --- |
-| `ziel-graph` | `/graph` | Zeigt die laufenden Chats eines Repos: Stand, nächster Schritt, offene Frage. Ein Chat mit eigenem Branch oder Ticket meldet sich selbst an, jeden anderen nimmt ein Knopf in der Leiste auf. Der hochkant laufende Graph der Ziele zeigt bis zum ersten Plan nur erfundene Beispieldaten, auf Knopfdruck. Stand: Schritt 2 von 5. |
-| `orchestrator` | `/orchestrator` | Die große Ansicht, aus der man arbeitet: der Plan des Repos als Prozesskarten, je Strang eine Spalte, mit `GOAL.md` als Anker. Sagt, wenn `GOAL.md` oder das Ziel eines Strangs fehlt. Legt Aufträge ins Eingabefeld; als Versuch lässt sich einem wartenden Chat von dort antworten. Liest die Chats, die der Ziel-Graph schreibt. Stand: 0.1.0, in der App noch nicht angesehen. Mehr in `docs/orchestrator.md`. |
+| `ziel-graph` | `/graph`, `/orchestrator` | Der Plan eines Repos in zwei Ansichten, mit `GOAL.md` als Anker. `/graph` zeigt schmal die laufenden Chats (Stand, nächster Schritt, offene Frage) und darunter den Plan als Graph. `/orchestrator` zeigt breit denselben Plan als Prozesskarten, je Strang eine Spalte; von dort legt man Aufträge ins Eingabefeld und kann, als Versuch, einem wartenden Chat antworten. Den Plan leitet ein Modell-Aufruf aus `GOAL.md`, der Doku, den Chats und den Commits ab. Fehlt `GOAL.md` oder das Ziel eines Strangs, sagt der Mod das. Mehr in `docs/orchestrator.md`. |
 
 ## Auf einem Rechner einrichten
 
@@ -21,9 +20,7 @@ claude plugin marketplace add Tzy197/claude-mods
 claude plugin install ziel-graph@claude-mods
 ```
 
-```bash
-claude plugin install orchestrator@claude-mods
-```
+Bis Version 0.2 gab es den Orchestrator als eigenen Mod. Wer ihn noch installiert hat, entfernt ihn mit `claude plugin uninstall orchestrator@claude-mods`: Er steckt jetzt im Ziel-Graph.
 
 Der Ziel-Graph ersetzt das frühere Pfad-Board. Ist davon noch eine alte Fassung lokal installiert (`~/.claude/skills/pfad-board`), muss sie vorher weg: Sonst fassen beide Mods jede Antwort zusammen.
 
@@ -37,23 +34,17 @@ claude plugin marketplace update claude-mods
 claude plugin update ziel-graph@claude-mods
 ```
 
-```bash
-claude plugin update orchestrator@claude-mods
-```
-
 Danach die App neu starten: Ein Mod lädt beim Start der App.
 
 ## Was nicht im Repo liegt
 
-Die Chat-Stände des Ziel-Graphen liegen unter `~/.claude/ziel-graph/<schlüssel>/`, eine Datei je Chat. Der Schlüssel kommt aus der Adresse von `origin`, ohne `origin` aus dem Pfad des Ordners. Sie liegen auf dem Rechner, der die Session führt. Zwischen Rechnern wandert nichts.
-
-Der Orchestrator legt seinen Plan und jeden Lauf mit Eingabe und Antwort des Modells unter `~/.claude/orchestrator/<schlüssel>/` ab.
+Die Chat-Stände liegen unter `~/.claude/ziel-graph/<schlüssel>/`, eine Datei je Chat; der Plan und jeder Lauf mit Eingabe und Antwort des Modells im Unterordner `plan/`. Der Schlüssel kommt aus der Adresse von `origin`, ohne `origin` aus dem Pfad des Ordners. Sie liegen auf dem Rechner, der die Session führt. Zwischen Rechnern wandert nichts.
 
 ## Voraussetzungen des Ziel-Graphen
 
 - `git` im Pfad, für den Branch-Namen des Chats. Ohne Git-Repo läuft der Mod trotzdem.
 - Für Ticket-Titel `glab` (GitLab) oder `gh` (GitHub), angemeldet. Tickets als Markdown-Dateien unter `.scratch/<vorhaben>/issues/` liest der Mod selbst. Ohne Ticket-System läuft er ohne Ticket-Titel.
-- Die Zusammenfassung nach jeder Antwort macht ein Modell-Aufruf (`claude-sonnet-5-5`).
+- Die Zusammenfassung nach jeder Antwort und das Ableiten des Plans macht je ein Modell-Aufruf (`claude-sonnet-5-5`).
 
 ## Prüfen
 

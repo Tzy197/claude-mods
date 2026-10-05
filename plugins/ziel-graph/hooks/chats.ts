@@ -8,10 +8,10 @@ import type {
 
 import type { ZielGraphChat, ZielGraphChats, ZielGraphTracker } from '../types'
 
-// Was der Graph über die laufenden Chats weiß: wo ihre Stände liegen, wer sich anmeldet
-// und wie der Stand nach einer Antwort entsteht. Kein `$`: `validate` folgt `$` nur in
-// Funktionen derselben Datei, nie über einen Import. register.tsx baut deshalb aus `$`
-// einen Zugang und reicht ihn hierher.
+// Was der Mod über die laufenden Chats weiß: wo ihre Stände liegen, wer sich anmeldet
+// und wie der Stand nach einer Antwort entsteht. Beide Ansichten und das Ableiten lesen die
+// Chats von hier. Kein `$`: `validate` folgt `$` nur in Funktionen derselben Datei, nie über
+// einen Import. register.tsx baut deshalb aus `$` einen Zugang und reicht ihn hierher.
 
 export type ChatZugang = {
   sitzung: () => Promise<string>
@@ -28,6 +28,12 @@ export type ChatZugang = {
   frage: (system: string, prompt: string) => Promise<ModelCompleteResult>
   melde: (text: string) => void
 }
+
+// Was das Lesen der Chats von der Engine braucht: Auch das Ableiten liest sie damit.
+export type LeseZugang = Pick<
+  ChatZugang,
+  'sitzung' | 'heim' | 'repo' | 'wurzel' | 'jetzt' | 'gibtEs' | 'liste' | 'lies'
+>
 
 const VERALTET_MS = 14 * 24 * 60 * 60_000
 const HAUPTZWEIGE = ['', 'main', 'master', 'HEAD']
@@ -173,6 +179,10 @@ export const alter = (jetzt: number, zeit: number): string => {
   return `vor ${Math.round(minuten / 1440)} Tagen`
 }
 
+// Wie ein Chat heißt, solange das Modell ihm noch keinen Namen gegeben hat.
+export const nameVon = (chat: Pick<ZielGraphChat, 'name'>): string =>
+  chat.name === '' ? 'Neuer Chat' : chat.name
+
 // Die Kopfzeile über den Chats: "3 Chats, 1 wartet auf dich".
 export const zaehler = (chats: readonly ZielGraphChat[]): string => {
   const wartend = chats.filter(one => one.frage !== '').length
@@ -195,7 +205,7 @@ export const neueFragen = (
 
 // ---------- Lesen und Schreiben ----------
 
-const liesText = async (zugang: ChatZugang, pfad: string): Promise<string | null> => {
+const liesText = async (zugang: Pick<ChatZugang, 'lies'>, pfad: string): Promise<string | null> => {
   try {
     return await zugang.lies(pfad)
   } catch {
@@ -203,17 +213,22 @@ const liesText = async (zugang: ChatZugang, pfad: string): Promise<string | null
   }
 }
 
-// Ein Ordner je Repo, außerhalb der Arbeitskopie: alle Worktrees teilen ihn.
-const ordner = async (zugang: ChatZugang): Promise<string> => {
+// Der Schlüssel des Repos, in dem die Session läuft. Alle Worktrees teilen ihn.
+export const schluesselVon = async (zugang: Pick<ChatZugang, 'repo' | 'wurzel'>): Promise<string> => {
   const repo = await zugang.repo()
-  const wurzel = repo?.root ?? (await zugang.wurzel())
 
-  return `${await zugang.heim()}/.claude/ziel-graph/${schluessel(repo?.remote ?? null, wurzel)}`
+  return schluessel(repo?.remote ?? null, repo?.root ?? (await zugang.wurzel()))
 }
 
-// Die Chats des Repos, die die Leiste zeigt: angemeldet und in den letzten 14 Tagen angefasst.
-export const liesChats = async (zugang: ChatZugang): Promise<ZielGraphChats> => {
-  const dir = await ordner(zugang)
+// Ein Ordner je Repo, außerhalb der Arbeitskopie: alle Worktrees teilen ihn. Direkt darin
+// liegt je Session eine Datei mit dem Stand ihres Chats; der Plan hat einen Unterordner.
+export const ordnerVon = async (zugang: Pick<ChatZugang, 'heim' | 'repo' | 'wurzel'>): Promise<string> =>
+  `${await zugang.heim()}/.claude/ziel-graph/${await schluesselVon(zugang)}`
+
+// Die Chats des Repos, die beide Ansichten zeigen: angemeldet und in den letzten 14 Tagen
+// angefasst. Gelesen werden nur die Dateien direkt im Ordner, keine Unterordner.
+export const liesChats = async (zugang: LeseZugang): Promise<ZielGraphChats> => {
+  const dir = await ordnerVon(zugang)
   const ich = await zugang.sitzung()
   const gelesen = await zugang.jetzt()
   const chats: ZielGraphChat[] = []
@@ -371,7 +386,7 @@ export const fasseZusammen = async (
   letzterPrompt: string,
 ): Promise<boolean> => {
   try {
-    const dir = await ordner(zugang)
+    const dir = await ordnerVon(zugang)
     const eigene = await liesEigene(zugang, dir)
 
     if (eigene !== null && !eigene.aktiv) {
@@ -448,7 +463,7 @@ export const fasseZusammen = async (
 // ---------- Aufnehmen und Herausnehmen ----------
 
 const setzeAktiv = async (zugang: ChatZugang, aktiv: boolean): Promise<void> => {
-  const dir = await ordner(zugang)
+  const dir = await ordnerVon(zugang)
   const ich =
     (await liesEigene(zugang, dir)) ?? neuerChat(await zugang.sitzung(), await zweig(zugang))
 

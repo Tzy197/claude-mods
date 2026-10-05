@@ -1,4 +1,4 @@
-import { eindeutig, kennung } from './worte'
+import { eindeutig, kennung } from '../worte'
 
 // GOAL.md: der Anker des Plans. Die Datei liegt in der Wurzel des Repos und nennt das
 // Endziel, die Zwischenziele auf dem Weg und je Strang das größere Ziel. Hier wird sie nur
@@ -325,8 +325,9 @@ export const istLeer = (goal: Goal): boolean =>
 
 // ---------- Die Aufträge an den Chat ----------
 
-// Der Mod schreibt GOAL.md nie selbst. Diese Texte legt er ins Eingabefeld; der Nutzer
-// schickt sie ab, und der Chat schreibt die Datei mit ihm zusammen.
+// Der Mod schreibt GOAL.md nie selbst. Diese Texte legt er ins Eingabefeld, aus jeder der
+// zwei Ansichten dieselben; der Nutzer schickt sie ab, und der Chat schreibt die Datei mit
+// ihm zusammen.
 
 const REGELN =
   'Frag mich, wo etwas unklar ist, eine Frage auf einmal und mit einer Empfehlung. ' +
@@ -335,10 +336,10 @@ const REGELN =
 // Der Auftrag, GOAL.md für dieses Repo zu entwerfen.
 export const promptGoalAnlegen = (): string =>
   [
-    'Lass uns für dieses Repo die Datei GOAL.md in der Wurzel anlegen. Sie ist der Anker des Plans im Orchestrator: das Endziel, die Zwischenziele auf dem Weg dorthin und je Strang das größere Ziel, das er verfolgt.',
+    'Lass uns für dieses Repo die Datei GOAL.md in der Wurzel anlegen. Sie ist der Anker des Plans, den der Ziel-Graph zeigt: das Endziel, die Zwischenziele auf dem Weg dorthin und je Strang das größere Ziel, das er verfolgt.',
     `Lies dazu README.md, CLAUDE.md und die Doku unter docs/ und schlag mir einen Entwurf vor. ${REGELN}`,
     `Das Format:\n\n${GOAL_FORMAT}`,
-    'Die Stränge sind später die Spalten der Fläche: wenige, je ein bis zwei Worte, so wie das Projekt seine Arbeit selbst gliedert.',
+    'Die Stränge sind später die Bahnen des Graphen und die Spalten der Karten: wenige, je ein bis zwei Worte, so wie das Projekt seine Arbeit selbst gliedert.',
   ].join('\n\n')
 
 export type StrangFrage = {

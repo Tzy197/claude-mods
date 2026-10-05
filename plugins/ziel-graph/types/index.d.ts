@@ -1,27 +1,148 @@
-// Vertrag des Mods ziel-graph: der Zustand der Leiste, die laufenden Chats und die
-// Form der Graph-Daten.
+// Vertrag des Mods ziel-graph: der eine Plan des Repos, die laufenden Chats, der Lauf, der
+// den Plan ableitet, und was der Nutzer in den zwei Ansichten eingestellt hat.
+
+export type ZielGraphZone = 'hinter' | 'jetzt' | 'spaeter'
+
+export type ZielGraphStand = 'erledigt' | 'bereit' | 'teilweise' | 'blockiert'
 
 export type ZielGraphAnsicht = 'schritte' | 'uebersicht'
 
 export type ZielGraphFarben = 'auto' | 'hell' | 'dunkel'
 
-// Was der Nutzer in der Leiste eingestellt hat. Daraus und aus den Daten wird gezeichnet.
-export type ZielGraphZustand = {
-  // true: unter den Chats steht der Beispiel-Graph mit erfundenen Daten
-  beispiel: boolean
-  ansicht: ZielGraphAnsicht
-  // 'alle' oder die id einer Bahn
+// ---------- Der Plan ----------
+
+// Ein Strang: eine Bahn des Graphen und eine Spalte der Karten. GOAL.md nennt ihn Strang,
+// die Spezifikation Bahn.
+export type ZielGraphStrang = {
+  id: string
+  name: string
+  // 'ziel' hat ein Ende, 'dauer' ist ein Dauerläufer und läuft weiter
+  art: 'ziel' | 'dauer'
+  // wohin der Strang führt, wörtlich aus GOAL.md; '' wenn dort keines festgelegt ist
   ziel: string
-  // ids der Bahnen, die der Nutzer ausgeblendet hat
-  bahnenAus: string[]
-  // ids der Personen, die der Nutzer ausgeblendet hat
-  personenAus: string[]
-  // ids der aufgeklappten Bündel
-  offen: string[]
-  farben: ZielGraphFarben
+  // was das Modell als Ziel vermutet; nur von Belang, solange `ziel` leer ist
+  vermutung: string
+  // true: Der Strang steht in GOAL.md. false: Das Modell hat ihn in den anderen Quellen gefunden.
+  inGoal: boolean
+  // id des Zwischenziels, zu dem der Strang laut GOAL.md gehört; '' ohne
+  gehoertZu: string
+  farbe: { hell: string; dunkel: string }
 }
 
-// Welches Ticket-System ein Repo nutzt. 'keine': der Graph läuft ohne Tickets.
+// Ein Bündel: das, was ein Chat in einem Zug erledigen würde. Eine Zeile des Graphen und
+// eine Karte.
+export type ZielGraphBuendel = {
+  id: string
+  // id eines Strangs
+  strang: string
+  zone: ZielGraphZone
+  stand: ZielGraphStand
+  titel: string
+  meta: string
+  // die einzelnen Aufgaben des Bündels
+  punkte: string[]
+  // woher das Bündel stammt: ein Dateiname, 'chats' oder 'commits'; '' wenn unbekannt
+  quelle: string
+  // true: Das Modell hat das Bündel, seinen Stand oder seinen Grund nur geschlossen
+  vermutet: boolean
+  // id des Bündels oder Stamm-Schritts, auf den dieses Bündel wartet; '' ohne
+  wartetAuf: string
+  // die Sessions der Chats, die das Modell diesem Bündel zugeordnet hat
+  chats: string[]
+}
+
+// Ein Schritt auf dem Stamm: ein Zwischenziel aus GOAL.md, der Treffpunkt des Modells oder
+// ein Schritt danach.
+export type ZielGraphSchritt = {
+  id: string
+  art: 'zwischenziel' | 'treffpunkt' | 'schritt'
+  titel: string
+  meta: string
+  quelle: string
+  vermutet: boolean
+  // true: steht als Zwischenziel in GOAL.md
+  inGoal: boolean
+  // true: in GOAL.md als erreicht abgehakt
+  erreicht: boolean
+}
+
+// Welcher Chat an welchem Bündel arbeitet, so wie das Modell es zugeordnet hat.
+export type ZielGraphZuordnung = {
+  // die id der Session
+  id: string
+  // die Kennung, unter der das Modell den Chat kannte (c1, c2, …)
+  kennung: string
+  name: string
+  // id des Bündels; '' wenn der Chat keinem zugeordnet ist
+  buendel: string
+}
+
+export type ZielGraphEndziel = {
+  // '' wenn keines festgelegt und keines vermutet ist
+  text: string
+  // 'goal': wörtlich aus GOAL.md. 'vermutet': vom Modell. 'offen': keines.
+  herkunft: 'goal' | 'vermutet' | 'offen'
+}
+
+// Der eine Plan des Mods. Beide Ansichten zeichnen ihn: `/graph` als Graph, `/orchestrator`
+// als Karten.
+export type ZielGraphPlan = {
+  // true: Beim Aufräumen lag eine GOAL.md vor
+  mitGoal: boolean
+  endziel: ZielGraphEndziel
+  straenge: ZielGraphStrang[]
+  // Abschnitt für Abschnitt, darin Strang für Strang
+  buendel: ZielGraphBuendel[]
+  stamm: ZielGraphSchritt[]
+  chats: ZielGraphZuordnung[]
+}
+
+// Die Eckdaten eines Laufs.
+export type ZielGraphFakten = {
+  // wann der Lauf begonnen hat, in Millisekunden
+  zeit: number
+  dauerMs: number
+  modellMs: number
+  // wie viele Doku-Dateien, Chats und Commits das Modell bekommen hat
+  dateien: number
+  chats: number
+  commits: number
+  modell: string
+  // wo der Plan liegt; '' wenn er sich nicht schreiben ließ
+  datei: string
+}
+
+// Was beide Ansichten zeigen: der letzte gespeicherte Plan und wie GOAL.md gerade dasteht.
+export type ZielGraphGeladen = {
+  plan: ZielGraphPlan | null
+  // was beim Aufräumen der Antwort und beim Lesen von GOAL.md aufgefallen ist
+  warnungen: string[]
+  fakten: ZielGraphFakten | null
+  goal: {
+    vorhanden: boolean
+    // true: Die Datei ist da, nennt aber weder Endziel noch Zwischenziel noch Strang
+    leer: boolean
+    // true: GOAL.md sieht anders aus als beim letzten Ableiten
+    geaendert: boolean
+  }
+  // wann zuletzt von der Platte gelesen wurde, in Millisekunden; 0: noch nie
+  gelesen: number
+}
+
+// Wo der Lauf steht. 'nie': in dieser Session wurde noch nicht abgeleitet.
+export type ZielGraphLauf = {
+  phase: 'nie' | 'laeuft' | 'fertig' | 'fehler'
+  // wann der Lauf begonnen hat, in Millisekunden; 0: noch nie
+  seit: number
+  // wie lange er schon läuft, in ganzen Sekunden
+  sekunden: number
+  // warum der letzte Lauf gescheitert ist; '' wenn er das nicht ist
+  grund: string
+}
+
+// ---------- Die laufenden Chats ----------
+
+// Welches Ticket-System ein Repo nutzt. 'keine': der Mod läuft ohne Tickets.
 export type ZielGraphTracker = 'gitlab' | 'github' | 'markdown' | 'keine'
 
 // Ein laufender Chat, so wie er als Datei je Session auf dem Rechner liegt.
@@ -44,7 +165,7 @@ export type ZielGraphChat = {
   ticketTitel?: string
 }
 
-// Die Chats eines Repos, wie die Leiste sie zeigt: wer wartet, steht oben.
+// Die Chats eines Repos, wie beide Ansichten sie zeigen: wer wartet, steht oben.
 export type ZielGraphChats = {
   // die id der eigenen Session
   ich: string
@@ -53,60 +174,45 @@ export type ZielGraphChats = {
   gelesen: number
 }
 
-export type ZielGraphPerson = { id: string; name: string }
+// ---------- Die zwei Ansichten ----------
 
-export type ZielGraphBahn = {
-  id: string
-  name: string
-  // id der Person, der die Bahn gehört
-  person: string
-  // 'ziel' mündet in den Treffpunkt, 'dauer' ist ein Dauerläufer und endet im Pfeil
-  art: 'ziel' | 'dauer'
-  // true: es liegt schon etwas hinter uns, die Bahn ist oben durchgezogen
-  begonnen: boolean
-  farbe: { hell: string; dunkel: string }
+// Was der Nutzer in der schmalen Ansicht `/graph` eingestellt hat.
+export type ZielGraphGraphSicht = {
+  ansicht: ZielGraphAnsicht
+  // ids der aufgeklappten Zeilen
+  offen: string[]
 }
 
-export type ZielGraphKnoten =
-  | 'erledigt'
-  | 'laeuft'
-  | 'bereit'
-  | 'teilweise'
-  | 'blockiert'
-  | 'treffpunkt'
-  | 'stamm'
-  | 'endziel'
-
-export type ZielGraphZone = 'hinter' | 'jetzt' | 'spaeter'
-
-// Eine Zeile des Graphen: ein Bündel (Ansicht Schritte) oder ein ganzes Ziel (Ansicht Übersicht).
-export type ZielGraphZeile = {
-  id: string
-  art: ZielGraphKnoten
-  // id einer Bahn, oder 'stamm' für die gemeinsame Bahn ab dem Treffpunkt
-  bahn: string
-  titel: string
-  meta: string
-  // nur in der Ansicht Schritte und nur für Bahn-Zeilen
-  zone?: ZielGraphZone
-  // ein Chat arbeitet an dieser Zeile; 'wartet': er wartet auf den Nutzer
-  chat?: 'laeuft' | 'wartet'
-  // die Tickets des Bündels; nur damit lässt es sich aufklappen
-  tickets?: string[]
-  // id der Zeile, auf die diese Zeile wartet (dünne gestrichelte Linie)
-  wartetAuf?: string
+// Was der Nutzer in der breiten Ansicht `/orchestrator` eingestellt hat.
+export type ZielGraphKartenSicht = {
+  // der Schlüssel der gewählten Karte; '' wenn keine gewählt ist
+  wahl: string
+  farben: ZielGraphFarben
 }
 
-export type ZielGraphDaten = {
-  endziel: string
-  personen: ZielGraphPerson[]
-  bahnen: ZielGraphBahn[]
-  schritte: ZielGraphZeile[]
-  uebersicht: ZielGraphZeile[]
+// Versuch: der letzte Versand einer Antwort an einen wartenden Chat.
+export type ZielGraphAntwort = {
+  // die Session, an die gesendet wurde; '' wenn noch nie
+  chat: string
+  phase: 'nie' | 'zugestellt' | 'nicht'
+  // warum die Antwort nicht zugestellt wurde; '' sonst
+  grund: string
+  // wann gesendet wurde, in Millisekunden
+  zeit: number
 }
 
 declare module 'claude-code' {
   interface PluginState {
-    'ziel-graph': { zustand: ZielGraphZustand; chats: ZielGraphChats }
+    'ziel-graph': {
+      geladen: ZielGraphGeladen
+      chats: ZielGraphChats
+      // wann die Chats zuletzt gelesen wurden, in Millisekunden, auch wenn sich dabei nichts
+      // geändert hat. Nur die schmale Ansicht liest es: So laufen ihre Zeitangaben weiter.
+      uhr: number
+      lauf: ZielGraphLauf
+      graph: ZielGraphGraphSicht
+      karten: ZielGraphKartenSicht
+      antwort: ZielGraphAntwort
+    }
   }
 }
